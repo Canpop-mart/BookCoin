@@ -1,0 +1,8 @@
+{
+  "appId": "casual.bookcoin.app",
+  "appName": "BookCoin",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

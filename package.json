@@ -1,0 +1,12 @@
+{
+  "name": "bookcoin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A cozy, self-hosted family reading game.",
+  "scripts": {
+    "dev:server": "pnpm --filter bookcoin-server dev",
+    "dev:app": "pnpm --filter bookcoin-app dev",
+    "dev": "pnpm --parallel --filter bookcoin-server --filter bookcoin-app dev",
+    "build:app": "pnpm --filter bookcoin-app build"
+  }
+}

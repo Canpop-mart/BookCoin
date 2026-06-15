@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/
+*.log
+.DS_Store
+.env
+
+# Capacitor / Android build output
+app/android/
+.gradle/
+*.apk
+*.keystore

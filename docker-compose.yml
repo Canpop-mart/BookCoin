@@ -1,0 +1,10 @@
+services:
+  bookcoin:
+    build: .
+    image: bookcoin:latest
+    container_name: bookcoin
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
