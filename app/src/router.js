@@ -7,6 +7,7 @@ import LogView from './views/LogView.vue';
 import NookView from './views/NookView.vue';
 import ProfileView from './views/ProfileView.vue';
 import QuestsView from './views/QuestsView.vue';
+import ListsView from './views/ListsView.vue';
 import ShopView from './views/ShopView.vue';
 import AdminView from './views/AdminView.vue';
 
@@ -16,6 +17,7 @@ const routes = [
   { path: '/reading', component: ReadingView, meta: { full: true } },
   { path: '/log', component: LogView, meta: { full: true } },
   { path: '/quests', component: QuestsView },
+  { path: '/lists', component: ListsView },
   { path: '/nook', component: NookView },
   { path: '/shop', component: ShopView },
   { path: '/profile/:id?', component: ProfileView },
