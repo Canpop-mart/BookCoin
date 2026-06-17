@@ -106,8 +106,28 @@ function finalizeMonth(month) {
   for (const st of stars) for (const w of st.winners) {
     db.prepare("INSERT INTO coin_txns (member_id, amount, reason) VALUES (?, ?, 'star')").run(w.id, STAR_COINS);
   }
+  const allGenres = new Set();
+  for (const a of Object.values(agg)) for (const g of a.genres) allGenres.add(g);
+  const longest = db.prepare("SELECT s.minutes AS minutes, m.name AS name FROM sessions s JOIN members m ON m.id = s.member_id WHERE strftime('%Y-%m', s.created_at) = ? ORDER BY s.minutes DESC LIMIT 1").get(month);
+  const stats = {
+    totalMinutes: out.reduce((a, s) => a + s.minutes, 0),
+    totalPages: out.reduce((a, s) => a + s.pages, 0),
+    totalSessions: out.reduce((a, s) => a + s.sessions, 0),
+    genres: allGenres.size,
+    longest: longest ? { minutes: longest.minutes, name: longest.name } : null,
+  };
+  const [yy, mm] = month.split('-').map(Number);
+  const daysInMonth = new Date(yy, mm, 0).getDate();
+  const dayRows = db.prepare("SELECT member_id AS id, CAST(substr(created_at, 9, 2) AS INTEGER) AS d, SUM(minutes) AS m FROM sessions WHERE strftime('%Y-%m', created_at) = ? GROUP BY member_id, d").all(month);
+  const series = out.slice(0, 5).map((s) => {
+    const perDay = new Array(daysInMonth).fill(0);
+    for (const r of dayRows) if (r.id === s.id) perDay[r.d - 1] = r.m;
+    let cum = 0;
+    return { id: s.id, name: s.name, color: s.color, points: perDay.map((v) => (cum += v)) };
+  });
+
   db.prepare('INSERT INTO month_summaries (month, data) VALUES (?, ?)')
-    .run(month, JSON.stringify({ month, standings: out, stars, starCoins: STAR_COINS }));
+    .run(month, JSON.stringify({ month, standings: out, stars, starCoins: STAR_COINS, stats, series }));
   console.log(`[bookcoin] finalized ${month}: ${out.length} readers, ${stars.filter((s) => s.winners.length).length} stars`);
 }
 
