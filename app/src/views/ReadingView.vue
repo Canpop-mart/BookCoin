@@ -35,8 +35,8 @@ function cancel() { router.replace('/'); }
       <MascotBird :size="100" eyes="happy" />
       <div style="font-size:54px;font-weight:700;font-family:'Quicksand';color:var(--ink);">{{ fmtClock(seconds) }}</div>
       <div class="sub">
-        <i class="ti ti-heart" style="color:var(--terra);" aria-hidden="true"></i>
-        {{ running ? 'still cozy? keep going' : 'paused — take your time' }}
+        <i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i>
+        {{ running ? 'keep going — every minute earns coins' : 'paused — tap resume to keep earning' }}
       </div>
     </div>
 

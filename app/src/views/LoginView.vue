@@ -37,7 +37,7 @@ async function submit() {
   <div class="screen full" style="justify-content:center;align-items:center;text-align:center;gap:12px;">
     <MascotBird :size="96" />
     <h1 style="font-size:27px;">BookCoin</h1>
-    <p class="sub" style="margin-top:-6px;">welcome to the family reading nook</p>
+    <p class="sub" style="margin-top:-6px;">the family reading contest</p>
 
     <div v-if="!selected" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:100%;margin-top:10px;">
       <button v-for="m in members" :key="m.id" class="card"
@@ -53,7 +53,7 @@ async function submit() {
       <div style="font-weight:600;">Hi {{ selected.name }}!</div>
       <input v-model="pin" type="password" inputmode="numeric" placeholder="Enter your PIN"
         style="text-align:center;letter-spacing:5px;" @keyup.enter="submit" />
-      <button class="btn" :disabled="loading" @click="submit">{{ loading ? '…' : 'Open my nook' }}</button>
+      <button class="btn" :disabled="loading" @click="submit">{{ loading ? '…' : 'Let’s go' }}</button>
       <button class="chip" @click="selected = null"><i class="ti ti-arrow-left" aria-hidden="true"></i> someone else</button>
     </div>
 
