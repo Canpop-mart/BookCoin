@@ -53,22 +53,22 @@ async function logout() {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
       <div class="card" style="text-align:center;padding:14px 8px;">
         <div style="font-size:19px;font-weight:700;font-family:'Quicksand';">{{ fmtDuration(data.totals.minutes) }}</div>
-        <div class="sub">read</div>
+        <div class="sub">Read</div>
       </div>
       <div class="card" style="text-align:center;padding:14px 8px;">
         <div style="font-size:19px;font-weight:700;font-family:'Quicksand';">{{ data.totals.sessions }}</div>
-        <div class="sub">sessions</div>
+        <div class="sub">Sessions</div>
       </div>
       <div class="card" style="text-align:center;padding:14px 8px;">
         <div style="font-size:19px;font-weight:700;font-family:'Quicksand';">{{ data.totals.pages }}</div>
-        <div class="sub">pages</div>
+        <div class="sub">Pages</div>
       </div>
     </div>
 
     <div v-if="isMe" class="card row" style="justify-content:space-between;">
       <div>
         <div style="font-weight:600;font-size:14px;"><i class="ti ti-target" style="color:var(--terra);" aria-hidden="true"></i> Monthly goal</div>
-        <div class="sub">the target on the Ranks tab</div>
+        <div class="sub">Your monthly reading target</div>
       </div>
       <div class="row" style="gap:6px;">
         <input v-model.number="goalHours" type="number" min="0.5" step="0.5" style="width:64px;text-align:center;padding:9px;" aria-label="goal hours" />
@@ -78,7 +78,7 @@ async function logout() {
     </div>
 
     <div class="row" style="justify-content:space-between;">
-      <span class="sub">badges</span>
+      <span class="sub">Badges</span>
       <span class="sub">{{ earnedCount }} / {{ data.badges.length }}</span>
     </div>
     <div class="card" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
@@ -92,14 +92,14 @@ async function logout() {
     </div>
 
     <div v-if="data.byMedium.length" class="card">
-      <div class="sub" style="margin-bottom:8px;">time by format</div>
+      <div class="sub" style="margin-bottom:8px;">Time by format</div>
       <div v-for="b in data.byMedium" :key="b.medium" class="row" style="justify-content:space-between;font-size:14px;padding:3px 0;">
         <span>{{ mediumLabel(b.medium) }}</span><span class="sub">{{ fmtDuration(b.minutes) }}</span>
       </div>
     </div>
 
-    <div class="sub" style="margin-top:2px;">reading log</div>
-    <div v-if="!data.recent.length" class="card sub">Nothing logged yet — get on the board!</div>
+    <div class="sub" style="margin-top:2px;">Reading log</div>
+    <div v-if="!data.recent.length" class="card sub">No sessions logged yet.</div>
     <div v-for="s in data.recent" :key="s.id" class="card">
       <div class="row" style="justify-content:space-between;">
         <span style="font-weight:600;">{{ s.title || 'Untitled' }}</span>

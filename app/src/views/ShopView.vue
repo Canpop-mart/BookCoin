@@ -24,7 +24,7 @@ async function redeem(r) {
   busy.value = r.id; toast.value = '';
   try {
     await api.redeemReward(r.id);
-    toast.value = `${r.name} reserved — an admin will hand it over`;
+    toast.value = `${r.name} redeemed — an admin will fulfill it`;
     burst.value = true;
     setTimeout(() => { burst.value = false; }, 1300);
     await load();
@@ -46,7 +46,7 @@ const statusStyle = (s) => s === 'fulfilled'
   <div class="screen" v-if="data">
     <CoinBurst v-if="burst" />
     <div class="row" style="justify-content:space-between;">
-      <div class="h"><i class="ti ti-gift" style="color:var(--terra);" aria-hidden="true"></i> Reward shop</div>
+      <div class="h"><i class="ti ti-gift" style="color:var(--terra);" aria-hidden="true"></i> Rewards</div>
       <span class="chip" style="background:var(--gold-bg);color:var(--gold-d);"><i class="ti ti-coin" aria-hidden="true"></i> <CoinCount :value="data.balance" /></span>
     </div>
     <p v-if="toast" class="sub pop-in" style="text-align:center;color:var(--gold-d);">{{ toast }}</p>
@@ -70,11 +70,11 @@ const statusStyle = (s) => s === 'fulfilled'
     </div>
 
     <template v-if="redemptions.length">
-      <div class="sub" style="margin-top:6px;">your rewards</div>
+      <div class="sub" style="margin-top:6px;">Your rewards</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:7px;">
         <div v-for="rd in redemptions" :key="rd.id" class="card row" style="justify-content:space-between;padding:11px 14px;">
           <span>{{ rd.name }}</span>
-          <span class="chip" :style="statusStyle(rd.status)">{{ rd.status === 'requested' ? 'pending' : rd.status }}</span>
+          <span class="chip" :style="statusStyle(rd.status)">{{ ({ requested: 'Pending', fulfilled: 'Fulfilled', cancelled: 'Cancelled' })[rd.status] }}</span>
         </div>
       </div>
     </template>

@@ -24,7 +24,7 @@ async function claim(q) {
   try {
     const r = await api.claimQuest(q.id);
     if (r.status === 'pending') {
-      toast.value = 'Sent to an admin for approval';
+      toast.value = 'Submitted for approval';
     } else {
       toast.value = `+${r.coins} coins!`;
       burst.value = true;
@@ -46,7 +46,7 @@ async function claim(q) {
     <p v-if="toast" class="sub pop-in" style="text-align:center;color:var(--gold-d);">{{ toast }}</p>
 
     <template v-if="ready.length">
-      <div class="sub">ready to claim</div>
+      <div class="sub">Ready to claim</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:11px;">
         <div v-for="q in ready" :key="q.id" class="card" style="display:flex;flex-direction:column;gap:11px;background:#FFF7F3;border-color:#F2D2C5;">
           <div class="row" style="gap:11px;align-items:flex-start;">
@@ -60,7 +60,7 @@ async function claim(q) {
     </template>
 
     <template v-if="challenges.length">
-      <div class="sub" style="margin-top:4px;">challenges</div>
+      <div class="sub" style="margin-top:4px;">Challenges</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:11px;">
         <div v-for="q in challenges" :key="q.id" class="card" style="display:flex;flex-direction:column;gap:11px;">
           <div class="row" style="gap:11px;align-items:flex-start;">
@@ -68,13 +68,13 @@ async function claim(q) {
             <div style="flex:1;"><div style="font-weight:600;">{{ q.title }}</div><div class="sub">{{ q.description }}</div></div>
             <span class="chip" style="background:var(--gold-bg);color:var(--gold-d);"><i class="ti ti-coin" aria-hidden="true"></i> {{ q.rewardCoins }}</span>
           </div>
-          <button class="btn" :disabled="busy === q.id" @click="claim(q)"><i class="ti ti-flag" aria-hidden="true"></i> I did this<span v-if="q.requiresApproval"> · needs ok</span></button>
+          <button class="btn" :disabled="busy === q.id" @click="claim(q)"><i class="ti ti-flag" aria-hidden="true"></i> Mark complete<span v-if="q.requiresApproval"> · needs approval</span></button>
         </div>
       </div>
     </template>
 
     <template v-if="inProgress.length">
-      <div class="sub" style="margin-top:4px;">in progress</div>
+      <div class="sub" style="margin-top:4px;">In progress</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
         <div v-for="q in inProgress" :key="q.id" class="card" style="display:flex;flex-direction:column;gap:9px;padding:13px 15px;">
           <div class="row" style="gap:10px;">
@@ -91,7 +91,7 @@ async function claim(q) {
     </template>
 
     <template v-if="notStarted.length">
-      <div class="sub" style="margin-top:4px;">not started</div>
+      <div class="sub" style="margin-top:4px;">Not started</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
         <div v-for="q in notStarted" :key="q.id" class="card row" style="gap:11px;padding:13px 15px;">
           <span class="av" style="width:30px;height:30px;font-size:13px;background:#EFE0F0;color:#6E5E94;"><i :class="['ti', ICON[q.type]]" aria-hidden="true"></i></span>
@@ -102,11 +102,11 @@ async function claim(q) {
     </template>
 
     <template v-if="done.length">
-      <div class="sub" style="margin-top:4px;">done this month</div>
+      <div class="sub" style="margin-top:4px;">Completed</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:7px;">
         <div v-for="q in done" :key="q.id" class="card row" style="padding:10px 14px;opacity:.72;">
           <span style="flex:1;font-weight:600;">{{ q.title }}</span>
-          <span v-if="q.claimStatus === 'pending'" class="chip" style="padding:4px 10px;"><i class="ti ti-hourglass" aria-hidden="true"></i> pending</span>
+          <span v-if="q.claimStatus === 'pending'" class="chip" style="padding:4px 10px;"><i class="ti ti-hourglass" aria-hidden="true"></i> Pending</span>
           <span v-else class="chip" style="padding:4px 10px;background:var(--sage-bg);color:var(--sage-d);"><i class="ti ti-check" aria-hidden="true"></i> +{{ q.rewardCoins }}</span>
         </div>
       </div>

@@ -14,7 +14,7 @@ const toast = ref('');
 const qForm = reactive({ title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
 const rForm = reactive({ name: '', description: '', costCoins: 200, tier: 'low', stock: '' });
 
-const QTYPES = [['minutes', 'minutes read'], ['sessions', '# sessions'], ['genres', '# genres'], ['mediums', '# formats'], ['streak', 'day streak'], ['manual', 'manual / bounty']];
+const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['genres', 'Genres read'], ['mediums', 'Formats read'], ['streak', 'Day streak'], ['manual', 'Manual / bounty']];
 const pendingRedemptions = computed(() => redemptions.value.filter((r) => r.status === 'requested'));
 
 async function load() {
@@ -32,12 +32,12 @@ async function act(fn) { try { await fn(); await load(); } catch (e) { toast.val
 async function createQuest() {
   if (!qForm.title) return;
   await act(() => api.admin.createQuest({ ...qForm }));
-  toast.value = 'Quest added'; qForm.title = ''; qForm.description = '';
+  toast.value = 'Quest created'; qForm.title = ''; qForm.description = '';
 }
 async function createReward() {
   if (!rForm.name) return;
   await act(() => api.admin.createReward({ ...rForm }));
-  toast.value = 'Reward added'; rForm.name = ''; rForm.description = '';
+  toast.value = 'Reward created'; rForm.name = ''; rForm.description = '';
 }
 </script>
 
@@ -53,8 +53,8 @@ async function createReward() {
     <template v-else>
       <p v-if="toast" class="sub" style="color:var(--sage-d);">{{ toast }}</p>
 
-      <div class="sub">needs your ok</div>
-      <div v-if="!claims.length && !pendingRedemptions.length" class="card sub">Nothing waiting.</div>
+      <div class="sub">Pending approval</div>
+      <div v-if="!claims.length && !pendingRedemptions.length" class="card sub">Nothing pending.</div>
       <div v-for="c in claims" :key="'c' + c.id" class="card row" style="gap:10px;">
         <span class="av" style="width:30px;height:30px;" :style="{ background: c.color }">{{ c.initials }}</span>
         <div style="flex:1;"><div style="font-weight:600;">{{ c.member }}</div><div class="sub">quest: {{ c.title }} · +{{ c.rewardCoins }}</div></div>
@@ -64,46 +64,46 @@ async function createReward() {
       <div v-for="r in pendingRedemptions" :key="'r' + r.id" class="card row" style="gap:10px;">
         <span class="av" style="width:30px;height:30px;" :style="{ background: r.color }">{{ r.initials }}</span>
         <div style="flex:1;"><div style="font-weight:600;">{{ r.member }}</div><div class="sub">reward: {{ r.name }} · {{ r.costCoins }} coins</div></div>
-        <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.fulfill(r.id))"><i class="ti ti-check" aria-hidden="true"></i> give</button>
+        <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.fulfill(r.id))"><i class="ti ti-check" aria-hidden="true"></i> Fulfill</button>
         <button class="chip" @click="act(() => api.admin.cancel(r.id))">refund</button>
       </div>
 
-      <div class="sub" style="margin-top:6px;">new quest</div>
+      <div class="sub" style="margin-top:6px;">Create quest</div>
       <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-        <input v-model="qForm.title" placeholder="title" />
-        <input v-model="qForm.description" placeholder="description" />
+        <input v-model="qForm.title" placeholder="Title" />
+        <input v-model="qForm.description" placeholder="Description" />
         <div class="row" style="gap:8px;">
           <select v-model="qForm.type" style="flex:1;"><option v-for="t in QTYPES" :key="t[0]" :value="t[0]">{{ t[1] }}</option></select>
-          <select v-model="qForm.period" style="width:120px;"><option value="month">monthly</option><option value="once">one-time</option></select>
+          <select v-model="qForm.period" style="width:120px;"><option value="month">Monthly</option><option value="once">One-time</option></select>
         </div>
         <div class="row" style="gap:8px;">
-          <input v-model.number="qForm.target" type="number" min="1" placeholder="target" />
-          <input v-model.number="qForm.rewardCoins" type="number" min="0" placeholder="coins" />
+          <input v-model.number="qForm.target" type="number" min="1" placeholder="Target" />
+          <input v-model.number="qForm.rewardCoins" type="number" min="0" placeholder="Reward coins" />
         </div>
-        <label v-if="qForm.type === 'manual'" class="sub row" style="gap:8px;"><input type="checkbox" v-model="qForm.requiresApproval" style="width:auto;" /> needs admin approval</label>
-        <button class="btn" @click="createQuest"><i class="ti ti-plus" aria-hidden="true"></i> Add quest</button>
+        <label v-if="qForm.type === 'manual'" class="sub row" style="gap:8px;"><input type="checkbox" v-model="qForm.requiresApproval" style="width:auto;" /> Requires approval</label>
+        <button class="btn" @click="createQuest"><i class="ti ti-plus" aria-hidden="true"></i> Create quest</button>
       </div>
 
-      <div class="sub">quests</div>
+      <div class="sub">Quests</div>
       <div v-for="q in quests" :key="q.id" class="card row" style="padding:10px 13px;" :style="q.active ? {} : { opacity: .5 }">
         <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">{{ q.type }} · +{{ q.reward_coins }}</span></div>
         <button v-if="q.active" class="chip" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         <span v-else class="sub">retired</span>
       </div>
 
-      <div class="sub" style="margin-top:6px;">new reward</div>
+      <div class="sub" style="margin-top:6px;">Create reward</div>
       <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-        <input v-model="rForm.name" placeholder="name" />
-        <input v-model="rForm.description" placeholder="description" />
+        <input v-model="rForm.name" placeholder="Name" />
+        <input v-model="rForm.description" placeholder="Description" />
         <div class="row" style="gap:8px;">
-          <input v-model.number="rForm.costCoins" type="number" min="0" placeholder="cost" />
-          <select v-model="rForm.tier" style="width:100px;"><option value="low">low</option><option value="mid">mid</option><option value="high">high</option></select>
-          <input v-model="rForm.stock" type="number" min="0" placeholder="stock ∞" style="width:110px;" />
+          <input v-model.number="rForm.costCoins" type="number" min="0" placeholder="Cost" />
+          <select v-model="rForm.tier" style="width:100px;"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
+          <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (∞)" style="width:120px;" />
         </div>
-        <button class="btn" @click="createReward"><i class="ti ti-plus" aria-hidden="true"></i> Add reward</button>
+        <button class="btn" @click="createReward"><i class="ti ti-plus" aria-hidden="true"></i> Create reward</button>
       </div>
 
-      <div class="sub">rewards</div>
+      <div class="sub">Rewards</div>
       <div v-for="r in rewards" :key="r.id" class="card row" style="padding:10px 13px;" :style="r.active ? {} : { opacity: .5 }">
         <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.cost_coins }} · {{ r.tier }}</span></div>
         <button v-if="r.active" class="chip" @click="act(() => api.admin.deleteReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>

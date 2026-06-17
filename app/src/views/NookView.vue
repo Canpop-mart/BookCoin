@@ -21,11 +21,11 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
 
 <template>
   <div class="screen" v-if="data">
-    <div class="h"><i class="ti ti-trophy" style="color:var(--gold);" aria-hidden="true"></i> Family leaderboard</div>
+    <div class="h"><i class="ti ti-trophy" style="color:var(--gold);" aria-hidden="true"></i> Leaderboard</div>
 
     <div class="row" style="gap:7px;">
-      <button class="chip" :class="{ on: period === 'month' }" style="flex:1;justify-content:center;" @click="setPeriod('month')">this month</button>
-      <button class="chip" :class="{ on: period === 'all' }" style="flex:1;justify-content:center;" @click="setPeriod('all')">all-time</button>
+      <button class="chip" :class="{ on: period === 'month' }" style="flex:1;justify-content:center;" @click="setPeriod('month')">This month</button>
+      <button class="chip" :class="{ on: period === 'all' }" style="flex:1;justify-content:center;" @click="setPeriod('all')">All time</button>
     </div>
 
     <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
@@ -47,17 +47,17 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
 
     <div v-if="period === 'month' && me" class="card" style="background:var(--sage-bg);border-color:transparent;">
       <div class="row" style="justify-content:space-between;font-size:14px;color:var(--sage-d);">
-        <span><i class="ti ti-target" aria-hidden="true"></i> your goal</span>
+        <span><i class="ti ti-target" aria-hidden="true"></i> Your goal</span>
         <span>{{ fmtDuration(me.minutes) }} of {{ fmtDuration(me.goal) }}</span>
       </div>
       <div class="bar" style="margin-top:8px;background:#D8E2C7;"><span :style="{ width: pct(me.minutes, me.goal) + '%' }"></span></div>
     </div>
 
     <p v-if="period === 'month' && ahead" class="sub" style="text-align:center;">
-      {{ fmtDuration(gapAhead) }} behind {{ ahead.name }} — you've got this <i class="ti ti-flame" style="color:var(--terra);" aria-hidden="true"></i>
+      {{ fmtDuration(gapAhead) }} behind {{ ahead.name }}
     </p>
     <p v-else-if="period === 'month' && me && me.minutes > 0" class="sub" style="text-align:center;">
-      You're leading the family <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i>
+      You're in 1st place <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i>
     </p>
   </div>
 </template>

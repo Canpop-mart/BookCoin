@@ -56,11 +56,11 @@ function ago(ts) {
     <div class="card row" style="background:var(--sage-bg);border-color:transparent;gap:12px;">
       <Mascot :size="68" eyes="happy" />
       <div style="flex:1;">
-        <div style="font-weight:600;font-size:16px;">Hey {{ store.member.name }}!</div>
+        <div style="font-weight:600;font-size:16px;">Hi, {{ store.member.name }}</div>
         <div class="sub" style="color:var(--sage-d);margin-top:2px;">
-          <template v-if="myRank === 1">Top of the family this month <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i></template>
-          <template v-else-if="ahead">#{{ myRank }} — {{ fmtDuration(gapAhead) }} behind {{ ahead.name }}</template>
-          <template v-else>Log a session to climb the board</template>
+          <template v-if="myRank === 1">You're 1st this month <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i></template>
+          <template v-else-if="ahead">{{ myRank }}{{ ['th','st','nd','rd'][myRank % 10] || 'th' }} place — {{ fmtDuration(gapAhead) }} behind {{ ahead.name }}</template>
+          <template v-else>Log a session to join the leaderboard</template>
         </div>
       </div>
       <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flame flame" aria-hidden="true"></i> {{ streak }}d</span>
@@ -68,7 +68,7 @@ function ago(ts) {
 
     <div class="card row" style="background:var(--gold-bg);border-color:transparent;justify-content:space-between;">
       <div>
-        <div class="sub" style="color:var(--gold-d);">your coins</div>
+        <div class="sub" style="color:var(--gold-d);">Balance</div>
         <div class="row" style="gap:7px;margin-top:2px;">
           <i class="ti ti-coin" style="color:var(--gold);font-size:26px;" aria-hidden="true"></i>
           <span style="font-size:28px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';"><CoinCount :value="profile.balance" /></span>
@@ -94,7 +94,7 @@ function ago(ts) {
     </div>
 
     <button class="row" style="background:none;border:none;padding:0;cursor:pointer;justify-content:space-between;width:100%;" @click="router.push('/nook')">
-      <span class="sub">family this month</span><span class="sub">see all <i class="ti ti-chevron-right" aria-hidden="true"></i></span>
+      <span class="sub">Leaderboard</span><span class="sub">View all <i class="ti ti-chevron-right" aria-hidden="true"></i></span>
     </button>
     <div class="card" style="display:flex;flex-direction:column;gap:11px;">
       <div v-for="r in top3" :key="r.memberId" class="row" style="gap:10px;">
@@ -106,7 +106,7 @@ function ago(ts) {
     </div>
 
     <template v-if="activity.length">
-      <div class="sub">around the house</div>
+      <div class="sub">Recent activity</div>
       <div class="card" style="display:flex;flex-direction:column;gap:13px;">
         <div v-for="a in activity.slice(0, 5)" :key="a.id" class="row" style="gap:10px;align-items:flex-start;">
           <span class="av" style="width:28px;height:28px;font-size:11px;" :style="{ background: a.color }">{{ a.initials }}</span>

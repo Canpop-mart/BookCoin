@@ -7,7 +7,7 @@ import { store } from '../store';
     <router-link to="/"><i class="ti ti-home" aria-hidden="true"></i><span>Home</span></router-link>
     <router-link to="/quests"><i class="ti ti-wand" aria-hidden="true"></i><span>Quests</span></router-link>
     <router-link to="/nook"><i class="ti ti-trophy" aria-hidden="true"></i><span>Ranks</span></router-link>
-    <router-link to="/shop"><i class="ti ti-gift" aria-hidden="true"></i><span>Shop</span></router-link>
-    <router-link :to="`/profile/${store.member?.id ?? ''}`"><i class="ti ti-user" aria-hidden="true"></i><span>Me</span></router-link>
+    <router-link to="/shop"><i class="ti ti-gift" aria-hidden="true"></i><span>Rewards</span></router-link>
+    <router-link :to="`/profile/${store.member?.id ?? ''}`"><i class="ti ti-user" aria-hidden="true"></i><span>Profile</span></router-link>
   </nav>
 </template>
