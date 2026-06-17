@@ -1,7 +1,6 @@
 services:
   bookcoin:
-    build: .
-    image: bookcoin:latest
+    image: ghcr.io/canpop-mart/bookcoin:latest
     container_name: bookcoin
     ports:
       - "8787:8787"
