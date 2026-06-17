@@ -99,14 +99,13 @@ function submitOffer() {
             <div class="sub" v-if="r.description">{{ r.description }}</div>
             <div class="row" style="gap:6px;margin-top:4px;">
               <span class="av" style="width:18px;height:18px;font-size:8px;" :style="{ background: r.ownerColor }">{{ r.ownerInitials }}</span>
-              <span class="sub">{{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
+              <span class="sub">from {{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">
             <div style="font-weight:700;font-family:'Quicksand';color:var(--gold-d);white-space:nowrap;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ r.costCoins }}</div>
-            <span v-if="r.ownerId === store.member.id" class="chip" style="padding:5px 12px;">yours</span>
-            <button v-else class="btn" style="width:auto;padding:8px 16px;font-size:14px;"
-              :disabled="busy || data.balance < r.costCoins || (r.stock != null && r.stock <= 0)" @click="redeem(r)">Redeem</button>
+            <button v-if="r.ownerId !== store.member.id" class="btn" style="width:auto;padding:8px 18px;font-size:14px;"
+              :disabled="busy || data.balance < r.costCoins || (r.stock != null && r.stock <= 0)" @click="redeem(r)"><i class="ti ti-shopping-bag" aria-hidden="true"></i> Buy</button>
           </div>
         </div>
       </div>
