@@ -28,6 +28,8 @@ export const api = {
   activity: () => req('/activity'),
   leaderboard: (period) => req('/leaderboard?period=' + period),
   profile: (id) => req('/profile/' + id),
+  ceremony: () => req('/ceremony'),
+  markCeremonySeen: (month) => req('/ceremony/seen', { method: 'POST', body: { month } }),
 
   quests: () => req('/quests'),
   claimQuest: (id) => req(`/quests/${id}/claim`, { method: 'POST' }),

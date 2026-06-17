@@ -3,9 +3,10 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, MEDIUMS } from '../data';
+import { fmtDuration, MEDIUMS, daysLeftInMonth } from '../data';
 
 const router = useRouter();
+const daysLeft = daysLeftInMonth();
 const profile = ref(null);
 const lb = ref(null);
 const quests = ref([]);
@@ -94,7 +95,7 @@ function ago(ts) {
     </div>
 
     <button class="row" style="background:none;border:none;padding:0;cursor:pointer;justify-content:space-between;width:100%;" @click="router.push('/nook')">
-      <span class="sub">Leaderboard</span><span class="sub">View all <i class="ti ti-chevron-right" aria-hidden="true"></i></span>
+      <span class="sub">Leaderboard · {{ daysLeft }}d left</span><span class="sub">View all <i class="ti ti-chevron-right" aria-hidden="true"></i></span>
     </button>
     <div class="card" style="display:flex;flex-direction:column;gap:11px;">
       <div v-for="r in top3" :key="r.memberId" class="row" style="gap:10px;">

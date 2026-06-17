@@ -10,6 +10,7 @@ import QuestsView from './views/QuestsView.vue';
 import ListsView from './views/ListsView.vue';
 import ShopView from './views/ShopView.vue';
 import AdminView from './views/AdminView.vue';
+import CeremonyView from './views/CeremonyView.vue';
 
 const routes = [
   { path: '/login', component: LoginView, meta: { public: true } },
@@ -22,6 +23,7 @@ const routes = [
   { path: '/shop', component: ShopView },
   { path: '/profile/:id?', component: ProfileView },
   { path: '/admin', component: AdminView, meta: { full: true } },
+  { path: '/ceremony', component: CeremonyView, meta: { full: true } },
 ];
 
 const router = createRouter({ history: createWebHistory(), routes });
