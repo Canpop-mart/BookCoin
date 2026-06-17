@@ -35,18 +35,21 @@ docker compose up -d --build
 This builds the web UI, bundles it with the server, and serves everything on port **8787**.
 The SQLite database lives in `./data` (mounted as a volume — back this folder up).
 
-## Android APK (later)
+## Android APK
 
-The web app is wrapped with Capacitor. Once the Android SDK is installed:
+The web app is wrapped with [Capacitor] and built in the cloud by GitHub Actions
+(`.github/workflows/android.yml`) — no local Android SDK needed.
 
-```bash
-cd app
-pnpm build
-npx cap add android      # first time only
-npx cap sync android
-# then build/sign the APK from the generated app/android project
-```
+- **Build it:** push to `main` (any change under `app/`) or run the **Build Android APK**
+  workflow manually from the Actions tab.
+- **Get it:** download the `bookcoin-apk` artifact from the workflow run. Tagging a release
+  (`git tag v0.1.0 && git push --tags`) also attaches `bookcoin.apk` to a GitHub Release.
+- **Install it:** copy the APK to an Android phone and open it (allow installs from unknown
+  sources). On first launch, tap **Server settings** and enter your NAS address
+  (e.g. `http://192.168.1.x:8787`).
 
-The app's server URL is configurable so the APK can point at your NAS over LAN or a domain.
+The APK is a **debug** build (signed with the debug key) — fine for sideloading to family
+devices. For Play Store distribution you'd add a release keystore + signing step.
 
+[Capacitor]: https://capacitorjs.com
 [Hono]: https://hono.dev
