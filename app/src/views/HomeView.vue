@@ -44,7 +44,7 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
 </script>
 
 <template>
-  <div class="screen" v-if="data">
+  <div class="screen stagger" v-if="data">
     <div class="row" style="justify-content:space-between;">
       <div class="row" style="gap:7px;"><i class="ti ti-book-2" style="color:var(--terra);font-size:22px;" aria-hidden="true"></i><span class="h">BookCoin</span></div>
       <span class="av" :style="{ background: store.member.color }">{{ store.member.initials }}</span>
@@ -60,7 +60,7 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
           <template v-else>Log a session to climb the board</template>
         </div>
       </div>
-      <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flame" aria-hidden="true"></i> {{ streak }}d</span>
+      <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flame flame" aria-hidden="true"></i> {{ streak }}d</span>
     </div>
 
     <div class="card row" style="background:var(--gold-bg);border-color:transparent;justify-content:space-between;">
@@ -68,7 +68,7 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
         <div class="sub" style="color:var(--gold-d);">your coins</div>
         <div class="row" style="gap:7px;margin-top:2px;">
           <i class="ti ti-coin" style="color:var(--gold);font-size:26px;" aria-hidden="true"></i>
-          <span style="font-size:28px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';">{{ data.balance }}</span>
+          <span style="font-size:28px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';"><CoinCount :value="data.balance" /></span>
         </div>
       </div>
       <i class="ti ti-coin" style="color:var(--gold);font-size:30px;opacity:.4;" aria-hidden="true"></i>

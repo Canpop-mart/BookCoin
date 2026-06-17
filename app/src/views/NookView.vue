@@ -28,7 +28,7 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
       <button class="chip" :class="{ on: period === 'all' }" style="flex:1;justify-content:center;" @click="setPeriod('all')">all-time</button>
     </div>
 
-    <div style="display:flex;flex-direction:column;gap:9px;">
+    <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
       <div v-for="r in data.rows" :key="r.memberId" class="card row" style="padding:11px 13px;"
         :style="r.memberId === store.member.id ? { background: 'var(--blush-bg)', borderColor: '#F2D2C5' } : {}">
         <span class="av" style="width:28px;height:28px;font-size:12px;"

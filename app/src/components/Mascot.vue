@@ -2,11 +2,13 @@
 defineProps({
   size: { type: Number, default: 76 },
   eyes: { type: String, default: 'open' }, // 'open' | 'happy'
+  mood: { type: String, default: 'idle' }, // 'idle' | 'cheer'
 });
 </script>
 
 <template>
-  <svg :width="size" :height="size * 1.16" viewBox="0 0 100 116" role="img" aria-label="A little wizard on a skateboard">
+  <svg :width="size" :height="size * 1.16" viewBox="0 0 100 116" role="img" aria-label="A little wizard on a skateboard"
+    :class="['mascot', { cheer: mood === 'cheer' }]">
     <!-- skateboard -->
     <rect x="20" y="99" width="60" height="7" rx="3.5" fill="#D9785A" />
     <circle cx="33" cy="109" r="4.5" fill="#4A3F35" />
