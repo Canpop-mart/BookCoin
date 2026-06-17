@@ -21,6 +21,9 @@ watch(() => route.params.id, load);
 
 const isMe = computed(() => id.value === store.member.id);
 const mediumLabel = (m) => MEDIUMS.find((x) => x.id === m)?.label || m;
+const openLog = ref({});
+const toggleLog = (id) => { openLog.value[id] = !openLog.value[id]; };
+const logDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '');
 const earnedCount = computed(() => (data.value?.badges || []).filter((b) => b.earned).length);
 
 async function saveGoal() {
@@ -100,16 +103,25 @@ async function logout() {
 
     <div class="sub" style="margin-top:2px;">Reading log</div>
     <div v-if="!data.recent.length" class="card sub">No sessions logged yet.</div>
-    <div v-for="s in data.recent" :key="s.id" class="card">
-      <div class="row" style="justify-content:space-between;">
-        <span style="font-weight:600;">{{ s.title || 'Untitled' }}</span>
-        <span class="sub" style="color:var(--gold-d);"><i class="ti ti-coin" aria-hidden="true"></i> +{{ s.coins }}</span>
+    <div class="stagger" style="display:flex;flex-direction:column;gap:8px;">
+      <div v-for="s in data.recent" :key="s.id" class="card" style="padding:0;overflow:hidden;">
+        <button @click="toggleLog(s.id)"
+          style="display:flex;align-items:center;gap:11px;width:100%;background:none;border:none;cursor:pointer;padding:12px 15px;text-align:left;font-family:inherit;">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ s.title || 'Untitled' }}</div>
+            <div class="sub">{{ fmtDuration(s.minutes) }} · {{ mediumLabel(s.medium) }}<span v-if="s.genres?.length"> · {{ s.genres.join(', ') }}</span></div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;">
+            <div style="font-weight:600;color:var(--gold-d);white-space:nowrap;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> +{{ s.coins }}</div>
+            <div class="sub" style="font-size:11px;">{{ logDate(s.createdAt) }}</div>
+          </div>
+          <i v-if="s.summary || s.quote" class="ti ti-chevron-down" style="color:var(--ink2);transition:transform .2s ease;flex-shrink:0;" :style="{ transform: openLog[s.id] ? 'rotate(180deg)' : 'none' }" aria-hidden="true"></i>
+        </button>
+        <div v-if="openLog[s.id] && (s.summary || s.quote)" style="padding:11px 15px 13px;border-top:1px solid var(--line);">
+          <div v-if="s.summary" style="font-size:14px;line-height:1.5;">{{ s.summary }}</div>
+          <div v-if="s.quote" class="sub" style="font-style:italic;margin-top:6px;">“{{ s.quote }}”</div>
+        </div>
       </div>
-      <div class="sub" style="margin:2px 0 6px;">
-        {{ fmtDuration(s.minutes) }} · {{ mediumLabel(s.medium) }}<span v-if="s.genres?.length"> · {{ s.genres.join(', ') }}</span>
-      </div>
-      <div v-if="s.summary" style="font-size:14px;line-height:1.5;">{{ s.summary }}</div>
-      <div v-if="s.quote" class="sub" style="font-style:italic;margin-top:5px;">“{{ s.quote }}”</div>
     </div>
 
     <button v-if="isMe && data.member.role === 'admin'" class="btn soft" style="margin-top:8px;" @click="router.push('/admin')"><i class="ti ti-settings" aria-hidden="true"></i> Admin</button>

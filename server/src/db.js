@@ -209,3 +209,53 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'lists_seeded'").get()) {
   const houseAdmin = db.prepare("SELECT id FROM members WHERE role = 'admin' ORDER BY id LIMIT 1").get();
   if (houseAdmin) db.prepare('UPDATE rewards SET owner_id = ? WHERE owner_id IS NULL').run(houseAdmin.id);
 }
+
+// --- extra challenges + reading lists (runs once, even on existing DBs; skips names that already exist) ---
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'seed_extra_1'").get()) {
+  const haveQuest = (t) => db.prepare('SELECT 1 FROM quests WHERE title = ?').get(t);
+  const addChallenge = db.prepare("INSERT INTO quests (title, description, type, target, reward_coins, period, requires_approval) VALUES (?, ?, 'manual', 1, ?, 'month', ?)");
+  for (const [title, desc, coins, appr] of [
+    ["Read someone else's favorite", 'Read a book another member loves', 250, 1],
+    ['Buddy read', 'Read the same book as someone else this month', 200, 1],
+    ['Pass it on', 'Recommend a book that someone else then reads', 150, 1],
+    ['Book to screen', 'Read a book that became a movie or show, then watch it', 200, 0],
+    ['Around the world', 'Read a book set in another country', 150, 0],
+    ['Older than you', 'Read a book published before you were born', 150, 0],
+    ['Finish a series', 'Read every book in a series', 300, 1],
+    ['Reread a favorite', 'Revisit a book you already love', 100, 0],
+  ]) if (!haveQuest(title)) addChallenge.run(title, desc, coins, appr);
+
+  const addList = (name, description, books) => {
+    if (db.prepare('SELECT 1 FROM lists WHERE name = ?').get(name)) return;
+    const lid = Number(db.prepare('INSERT INTO lists (name, description) VALUES (?, ?)').run(name, description).lastInsertRowid);
+    const ab = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)');
+    for (const [t, a] of books) ab.run(lid, t, a);
+  };
+  addList('Middle-grade magic', 'Big adventures for younger readers', [
+    ['The Lightning Thief', 'Rick Riordan'], ['Wonder', 'R.J. Palacio'], ['Holes', 'Louis Sachar'],
+    ['A Wrinkle in Time', 'Madeleine L’Engle'], ['The Tale of Despereaux', 'Kate DiCamillo'], ['Coraline', 'Neil Gaiman'],
+  ]);
+  addList('Books that became movies', 'Read it first, then watch', [
+    ['Harry Potter and the Sorcerer’s Stone', 'J.K. Rowling'], ['Matilda', 'Roald Dahl'], ['The Hunger Games', 'Suzanne Collins'],
+    ['Jurassic Park', 'Michael Crichton'], ['The Princess Bride', 'William Goldman'], ['Life of Pi', 'Yann Martel'],
+  ]);
+  addList('Sci-fi starters', 'Gateways into science fiction', [
+    ['Ender’s Game', 'Orson Scott Card'], ['Dune', 'Frank Herbert'], ['The Martian', 'Andy Weir'],
+    ['Ready Player One', 'Ernest Cline'], ['The Hitchhiker’s Guide to the Galaxy', 'Douglas Adams'], ['The War of the Worlds', 'H.G. Wells'],
+  ]);
+  addList('Graphic novels & manga', 'Stories told in pictures', [
+    ['Dog Man', 'Dav Pilkey'], ['Smile', 'Raina Telgemeier'], ['Bone', 'Jeff Smith'],
+    ['Amulet', 'Kazu Kibuishi'], ['One Piece, Vol. 1', 'Eiichiro Oda'], ['Persepolis', 'Marjane Satrapi'],
+  ]);
+  addList('True stories', 'Real lives and real events', [
+    ['I Am Malala', 'Malala Yousafzai'], ['Hidden Figures', 'Margot Lee Shetterly'], ['The Boy Who Harnessed the Wind', 'William Kamkwamba'],
+    ['Bomb', 'Steve Sheinkin'], ['Born a Crime', 'Trevor Noah'], ['Sapiens', 'Yuval Noah Harari'],
+  ]);
+  addList('Cozy & funny', 'Warm, light, laugh-out-loud reads', [
+    ['Diary of a Wimpy Kid', 'Jeff Kinney'], ['Good Omens', 'Pratchett & Gaiman'], ['A Man Called Ove', 'Fredrik Backman'],
+    ['Anne of Green Gables', 'L.M. Montgomery'], ['The Princess Diaries', 'Meg Cabot'], ['The No. 1 Ladies’ Detective Agency', 'Alexander McCall Smith'],
+  ]);
+
+  db.prepare("INSERT INTO meta (key, value) VALUES ('seed_extra_1', '1')").run();
+  console.log('[bookcoin] seeded 8 challenges + 6 reading lists');
+}

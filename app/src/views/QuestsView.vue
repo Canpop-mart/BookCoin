@@ -122,16 +122,23 @@ async function claim(q) {
     <!-- ============ CHALLENGES (manual) ============ -->
     <template v-else>
       <p class="sub" style="margin-top:-2px;">Real-world tasks — do them, then mark them complete.</p>
+      <div class="row" style="gap:16px;justify-content:center;margin-top:-4px;">
+        <span class="sub"><i class="ti ti-flag" style="color:var(--terra-d);" aria-hidden="true"></i> do it yourself</span>
+        <span class="sub"><i class="ti ti-shield-check" style="color:var(--terra-d);" aria-hidden="true"></i> needs approval</span>
+      </div>
       <div v-if="!manual.length" class="card sub">No challenges yet.</div>
 
       <div v-if="challengesOpen.length" class="stagger" style="display:flex;flex-direction:column;gap:11px;">
-        <div v-for="q in challengesOpen" :key="q.id" class="card" style="display:flex;flex-direction:column;gap:11px;">
-          <div class="row" style="gap:11px;align-items:flex-start;">
-            <span class="av" style="width:38px;height:38px;background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flag" aria-hidden="true"></i></span>
-            <div style="flex:1;"><div style="font-weight:600;">{{ q.title }}</div><div class="sub">{{ q.description }}</div></div>
-            <span class="chip" style="background:var(--gold-bg);color:var(--gold-d);"><i class="ti ti-coin" aria-hidden="true"></i> {{ q.rewardCoins }}</span>
+        <div v-for="q in challengesOpen" :key="q.id" class="card" style="display:flex;gap:12px;align-items:center;">
+          <span class="av" style="width:40px;height:40px;background:#FBE0D2;color:var(--terra-d);flex-shrink:0;" :title="q.requiresApproval ? 'Needs admin approval' : 'Mark it done yourself'"><i :class="q.requiresApproval ? 'ti ti-shield-check' : 'ti ti-flag'" style="font-size:20px;" aria-hidden="true"></i></span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;">{{ q.title }}</div>
+            <div class="sub">{{ q.description }}</div>
           </div>
-          <button class="btn" :disabled="busy === q.id" @click="claim(q)"><i class="ti ti-flag" aria-hidden="true"></i> Mark complete<span v-if="q.requiresApproval"> · needs approval</span></button>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">
+            <div style="font-weight:700;font-family:'Quicksand';color:var(--gold-d);white-space:nowrap;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ q.rewardCoins }}</div>
+            <button class="btn" style="width:auto;padding:8px 15px;font-size:14px;" :disabled="busy === q.id" @click="claim(q)"><i class="ti ti-check" aria-hidden="true"></i> Mark done</button>
+          </div>
         </div>
       </div>
 
