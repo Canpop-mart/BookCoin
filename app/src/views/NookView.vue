@@ -1,15 +1,21 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, daysLeftInMonth } from '../data';
+import { fmtDuration, daysLeftInMonth, monthName } from '../data';
 
+const router = useRouter();
 const daysLeft = daysLeftInMonth();
 const period = ref('month');
 const data = ref(null);
+const lastResults = ref(null);
 
 async function load() { data.value = await api.leaderboard(period.value); }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  try { const c = await api.ceremony(); if (c.summary) lastResults.value = c.summary.month; } catch {}
+});
 function setPeriod(p) { if (p !== period.value) { period.value = p; load(); } }
 
 const rows = computed(() => data.value?.rows || []);
@@ -63,5 +69,9 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
     <p v-else-if="period === 'month' && me && me.minutes > 0" class="sub" style="text-align:center;">
       You're in 1st place <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i>
     </p>
+
+    <button v-if="lastResults" class="chip" style="align-self:center;margin-top:6px;" @click="router.push('/ceremony?replay=1')">
+      <i class="ti ti-trophy" style="color:var(--gold);" aria-hidden="true"></i> {{ monthName(lastResults) }} results
+    </button>
   </div>
 </template>
