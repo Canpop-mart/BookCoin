@@ -461,6 +461,10 @@ api.delete('/admin/members/:id', (c) => {
   return c.body(null, 204);
 });
 
+// unknown /api/* routes return JSON 404 (never fall through to the SPA shell,
+// so a stale server/app mismatch fails cleanly instead of returning HTML)
+api.all('*', (c) => c.json({ error: 'Unknown endpoint' }, 404));
+
 // ===================== app wiring =====================
 const app = new Hono();
 app.use('*', cors());
