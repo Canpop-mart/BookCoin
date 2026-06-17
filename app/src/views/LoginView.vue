@@ -10,11 +10,27 @@ const selected = ref(null);
 const pin = ref('');
 const error = ref('');
 const loading = ref(false);
+const showServer = ref(false);
+const serverInput = ref(store.serverUrl);
 
-onMounted(async () => {
-  try { members.value = await api.members(); }
-  catch { error.value = "Can't reach the server"; }
-});
+onMounted(loadMembers);
+
+async function loadMembers() {
+  try {
+    members.value = await api.members();
+    showServer.value = false;
+  } catch {
+    error.value = "Can't reach the server";
+    showServer.value = true;
+  }
+}
+
+function connect() {
+  store.serverUrl = serverInput.value.trim().replace(/\/+$/, '');
+  store.save();
+  error.value = '';
+  loadMembers();
+}
 
 function pick(m) { selected.value = m; pin.value = ''; error.value = ''; }
 
@@ -39,7 +55,13 @@ async function submit() {
     <h1 style="font-size:27px;">BookCoin</h1>
     <p class="sub" style="margin-top:-6px;">Turn reading into rewards</p>
 
-    <div v-if="!selected" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:100%;margin-top:10px;">
+    <div v-if="showServer" class="card" style="width:100%;display:flex;flex-direction:column;gap:11px;">
+      <div style="font-weight:600;">Connect to your server</div>
+      <input v-model="serverInput" placeholder="https://your-nas:8787" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <button class="btn" @click="connect"><i class="ti ti-plug" aria-hidden="true"></i> Connect</button>
+    </div>
+
+    <div v-else-if="!selected" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:100%;margin-top:10px;">
       <button v-for="m in members" :key="m.id" class="card"
         style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:9px;"
         @click="pick(m)">
@@ -58,6 +80,9 @@ async function submit() {
     </div>
 
     <p v-if="error" class="sub" style="color:var(--terra-d);">{{ error }}</p>
-    <p class="sub" style="margin-top:10px;opacity:.65;">First time? The default PIN is 1234.</p>
+    <p v-if="!showServer && !selected" class="sub" style="margin-top:10px;opacity:.65;">First time? The default PIN is 1234.</p>
+    <button class="chip" style="margin-top:4px;opacity:.8;" @click="showServer = !showServer; serverInput = store.serverUrl">
+      <i class="ti ti-settings" aria-hidden="true"></i> Server settings
+    </button>
   </div>
 </template>
