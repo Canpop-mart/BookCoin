@@ -24,6 +24,8 @@ export const api = {
   me: () => req('/me'),
   logSession: (data) => req('/sessions', { method: 'POST', body: data }),
   mySessions: () => req('/me/sessions'),
+  setGoal: (minutes) => req('/me/goal', { method: 'POST', body: { minutes } }),
+  activity: () => req('/activity'),
   leaderboard: (period) => req('/leaderboard?period=' + period),
   profile: (id) => req('/profile/' + id),
 
