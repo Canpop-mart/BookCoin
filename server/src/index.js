@@ -31,6 +31,32 @@ const initialsFrom = (name) => {
 const clampGoal = (v) => Math.max(30, Math.min(6000, Math.round(Number(v) || 900)));
 const nextColor = () => MEMBER_COLORS[db.prepare('SELECT COUNT(*) AS n FROM members').get().n % MEMBER_COLORS.length];
 
+// Fulfill/cancel a redemption — allowed for the reward's owner or any admin.
+function doFulfill(rdId, by) {
+  const rd = db.prepare("SELECT * FROM redemptions WHERE id = ? AND status = 'requested'").get(rdId);
+  if (!rd) return { code: 400, error: 'Not fulfillable' };
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(rd.reward_id);
+  if (by.role !== 'admin' && r.owner_id !== by.id) return { code: 403, error: 'Not allowed' };
+  db.prepare("UPDATE redemptions SET status = 'fulfilled' WHERE id = ?").run(rd.id);
+  const cut = Math.round((rd.cost_coins * (r.owner_cut || 0)) / 100); // rest is sunk
+  if (cut > 0 && r.owner_id) {
+    db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
+      .run(r.owner_id, cut, 'reward-earnings', rd.id);
+  }
+  return { code: 200, ok: true, cut };
+}
+function doCancel(rdId, by) {
+  const rd = db.prepare("SELECT * FROM redemptions WHERE id = ? AND status = 'requested'").get(rdId);
+  if (!rd) return { code: 400, error: 'Not cancellable' };
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(rd.reward_id);
+  if (by.role !== 'admin' && r.owner_id !== by.id) return { code: 403, error: 'Not allowed' };
+  db.prepare("UPDATE redemptions SET status = 'cancelled' WHERE id = ?").run(rd.id);
+  db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
+    .run(rd.member_id, rd.cost_coins, 'refund', rd.id);
+  db.prepare('UPDATE rewards SET stock = stock + 1 WHERE id = ? AND stock IS NOT NULL').run(rd.reward_id);
+  return { code: 200, ok: true };
+}
+
 const rowToSession = (r) => ({
   id: r.id, memberId: r.member_id, title: r.title, author: r.author, medium: r.medium,
   genres: safeParse(r.genres), minutes: r.minutes, pages: r.pages, summary: r.summary,
@@ -279,16 +305,34 @@ api.post('/quests/:id/claim', (c) => {
 // ---- rewards / shop ----
 api.get('/rewards', (c) => {
   const m = c.get('member');
-  const rewards = db.prepare('SELECT * FROM rewards WHERE active = 1 ORDER BY cost_coins').all().map((r) => ({
-    id: r.id, name: r.name, description: r.description, costCoins: r.cost_coins, tier: r.tier, stock: r.stock,
-  }));
+  const rewards = db.prepare(`
+    SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.owner_cut AS ownerCut,
+           r.owner_id AS ownerId, o.name AS ownerName, o.initials AS ownerInitials, o.color AS ownerColor
+    FROM rewards r LEFT JOIN members o ON o.id = r.owner_id
+    WHERE r.status = 'approved' ORDER BY r.cost_coins`).all();
   return c.json({ balance: balance(m.id), rewards });
+});
+
+// any member can offer a reward (members' offers await admin approval; admins' go live)
+api.post('/rewards', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  if (!(b.name || '').trim()) return c.json({ error: 'Name required' }, 400);
+  const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : 'mid';
+  const stock = b.stock === '' || b.stock == null ? null : Math.max(0, Math.round(Number(b.stock)));
+  const cut = Math.max(0, Math.min(100, Math.round(Number(b.ownerCut ?? 50))));
+  const status = m.role === 'admin' ? 'approved' : 'pending';
+  const info = db.prepare(
+    'INSERT INTO rewards (name, description, cost_coins, tier, stock, owner_id, owner_cut, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(b.name.trim(), b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock, m.id, cut, status);
+  return c.json({ id: Number(info.lastInsertRowid), status });
 });
 
 api.post('/rewards/:id/redeem', (c) => {
   const m = c.get('member');
-  const r = db.prepare('SELECT * FROM rewards WHERE id = ? AND active = 1').get(Number(c.req.param('id')));
+  const r = db.prepare("SELECT * FROM rewards WHERE id = ? AND status = 'approved'").get(Number(c.req.param('id')));
   if (!r) return c.json({ error: 'Reward not found' }, 404);
+  if (r.owner_id === m.id) return c.json({ error: "That's your own reward" }, 400);
   if (balance(m.id) < r.cost_coins) return c.json({ error: 'Not enough coins yet' }, 400);
   if (r.stock != null && r.stock <= 0) return c.json({ error: 'Out of stock' }, 400);
 
@@ -300,6 +344,15 @@ api.post('/rewards/:id/redeem', (c) => {
   return c.json({ status: 'requested', balance: balance(m.id) });
 });
 
+api.post('/rewards/:id/archive', (c) => {
+  const m = c.get('member');
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(Number(c.req.param('id')));
+  if (!r) return c.json({ error: 'Not found' }, 404);
+  if (m.role !== 'admin' && r.owner_id !== m.id) return c.json({ error: 'Not allowed' }, 403);
+  db.prepare("UPDATE rewards SET status = 'archived' WHERE id = ?").run(r.id);
+  return c.body(null, 204);
+});
+
 api.get('/me/redemptions', (c) => {
   const m = c.get('member');
   const rows = db.prepare(`
@@ -307,6 +360,29 @@ api.get('/me/redemptions', (c) => {
     FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id
     WHERE rd.member_id = ? ORDER BY rd.id DESC LIMIT 30`).all(m.id);
   return c.json(rows);
+});
+
+// rewards I offer + redemptions of mine waiting for me to deliver
+api.get('/me/offers', (c) => {
+  const m = c.get('member');
+  const mine = db.prepare(
+    "SELECT id, name, cost_coins AS costCoins, status, owner_cut AS ownerCut FROM rewards WHERE owner_id = ? AND status != 'archived' ORDER BY id DESC"
+  ).all(m.id);
+  const toFulfill = db.prepare(`
+    SELECT rd.id, rd.cost_coins AS costCoins, rd.created_at AS createdAt, r.name, r.owner_cut AS ownerCut,
+           mem.name AS member, mem.initials, mem.color
+    FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id JOIN members mem ON mem.id = rd.member_id
+    WHERE r.owner_id = ? AND rd.status = 'requested' ORDER BY rd.id DESC`).all(m.id);
+  return c.json({ mine, toFulfill });
+});
+
+api.post('/redemptions/:id/fulfill', (c) => {
+  const r = doFulfill(Number(c.req.param('id')), c.get('member'));
+  return r.ok ? c.json(r) : c.json({ error: r.error }, r.code);
+});
+api.post('/redemptions/:id/cancel', (c) => {
+  const r = doCancel(Number(c.req.param('id')), c.get('member'));
+  return r.ok ? c.json(r) : c.json({ error: r.error }, r.code);
 });
 
 // ===================== admin =====================
@@ -332,45 +408,41 @@ api.delete('/admin/quests/:id', (c) => {
 });
 
 api.get('/admin/rewards', (c) =>
-  c.json(db.prepare('SELECT * FROM rewards ORDER BY active DESC, cost_coins').all()));
+  c.json(db.prepare(`
+    SELECT r.id, r.name, r.cost_coins AS costCoins, r.tier, r.stock, r.status, r.owner_cut AS ownerCut, o.name AS ownerName
+    FROM rewards r LEFT JOIN members o ON o.id = r.owner_id
+    WHERE r.status NOT IN ('archived', 'denied')
+    ORDER BY (r.status = 'pending') DESC, r.cost_coins`).all()));
 
-api.post('/admin/rewards', async (c) => {
+api.post('/admin/rewards/:id/approve', async (c) => {
+  const id = Number(c.req.param('id'));
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(id);
+  if (!r) return c.json({ error: 'Not found' }, 404);
   const b = await c.req.json().catch(() => ({}));
-  if (!b.name) return c.json({ error: 'Name required' }, 400);
-  const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : 'low';
-  const stock = b.stock === '' || b.stock == null ? null : Math.max(0, Math.round(Number(b.stock)));
-  const info = db.prepare('INSERT INTO rewards (name, description, cost_coins, tier, stock) VALUES (?, ?, ?, ?, ?)')
-    .run(b.name, b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock);
-  return c.json({ id: Number(info.lastInsertRowid) });
+  const cost = b.costCoins != null ? Math.max(0, Math.round(Number(b.costCoins))) : r.cost_coins;
+  const cut = b.ownerCut != null ? Math.max(0, Math.min(100, Math.round(Number(b.ownerCut)))) : r.owner_cut;
+  db.prepare("UPDATE rewards SET status = 'approved', cost_coins = ?, owner_cut = ? WHERE id = ?").run(cost, cut, id);
+  return c.body(null, 204);
+});
+
+api.post('/admin/rewards/:id/deny', (c) => {
+  db.prepare("UPDATE rewards SET status = 'denied' WHERE id = ?").run(Number(c.req.param('id')));
+  return c.body(null, 204);
 });
 
 api.delete('/admin/rewards/:id', (c) => {
-  db.prepare('UPDATE rewards SET active = 0 WHERE id = ?').run(Number(c.req.param('id')));
+  db.prepare("UPDATE rewards SET status = 'archived' WHERE id = ?").run(Number(c.req.param('id')));
   return c.body(null, 204);
 });
 
 api.get('/admin/redemptions', (c) => {
   const rows = db.prepare(`
     SELECT rd.id, rd.cost_coins AS costCoins, rd.status, rd.created_at AS createdAt,
-           r.name, m.name AS member, m.initials, m.color
+           r.name, o.name AS owner, m.name AS member, m.initials, m.color
     FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id JOIN members m ON m.id = rd.member_id
-    ORDER BY (rd.status = 'requested') DESC, rd.id DESC LIMIT 60`).all();
+    LEFT JOIN members o ON o.id = r.owner_id
+    WHERE rd.status = 'requested' ORDER BY rd.id DESC LIMIT 60`).all();
   return c.json(rows);
-});
-
-api.post('/admin/redemptions/:id/fulfill', (c) => {
-  db.prepare("UPDATE redemptions SET status = 'fulfilled' WHERE id = ? AND status = 'requested'").run(Number(c.req.param('id')));
-  return c.body(null, 204);
-});
-
-api.post('/admin/redemptions/:id/cancel', (c) => {
-  const rd = db.prepare("SELECT * FROM redemptions WHERE id = ? AND status = 'requested'").get(Number(c.req.param('id')));
-  if (!rd) return c.json({ error: 'Not cancellable' }, 400);
-  db.prepare("UPDATE redemptions SET status = 'cancelled' WHERE id = ?").run(rd.id);
-  db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
-    .run(rd.member_id, rd.cost_coins, 'refund', rd.id);
-  db.prepare('UPDATE rewards SET stock = stock + 1 WHERE id = ? AND stock IS NOT NULL').run(rd.reward_id);
-  return c.body(null, 204);
 });
 
 api.get('/admin/quest-claims', (c) => {

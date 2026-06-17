@@ -19,13 +19,14 @@ const lists = ref([]);
 const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' });
 const qForm = reactive({ title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
-const rForm = reactive({ name: '', description: '', costCoins: 200, tier: 'low', stock: '' });
+const rForm = reactive({ name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 });
 const lForm = reactive({ name: '', description: '' });
 const bookInput = reactive({});
 
 const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['genres', 'Genres read'], ['mediums', 'Formats read'], ['streak', 'Day streak'], ['manual', 'Manual / bounty']];
-const pendingRedemptions = computed(() => redemptions.value.filter((r) => r.status === 'requested'));
-const pendingCount = computed(() => claims.value.length + pendingRedemptions.value.length);
+const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
+const liveRewards = computed(() => rewards.value.filter((r) => r.status !== 'pending'));
+const pendingCount = computed(() => claims.value.length + pendingRewards.value.length);
 const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists']];
 
 async function load() {
@@ -73,8 +74,8 @@ async function createQuest() {
 }
 async function createReward() {
   if (!rForm.name) return;
-  await act(() => api.admin.createReward({ ...rForm }));
-  toast.value = 'Reward created'; rForm.name = ''; rForm.description = '';
+  await act(() => api.createReward({ ...rForm }));
+  toast.value = 'Reward added'; rForm.name = ''; rForm.description = '';
 }
 async function createList() {
   if (!lForm.name.trim()) return;
@@ -115,15 +116,15 @@ async function addBook(l) {
         <div v-if="!pendingCount" class="card sub">Nothing pending.</div>
         <div v-for="c in claims" :key="'c' + c.id" class="card row" style="gap:10px;">
           <span class="av" style="width:30px;height:30px;" :style="{ background: c.color }">{{ c.initials }}</span>
-          <div style="flex:1;"><div style="font-weight:600;">{{ c.member }}</div><div class="sub">quest: {{ c.title }} · +{{ c.rewardCoins }}</div></div>
+          <div style="flex:1;"><div style="font-weight:600;">{{ c.member }}</div><div class="sub">challenge: {{ c.title }} · +{{ c.rewardCoins }}</div></div>
           <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.approveClaim(c.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
           <button class="chip" @click="act(() => api.admin.rejectClaim(c.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
-        <div v-for="r in pendingRedemptions" :key="'r' + r.id" class="card row" style="gap:10px;">
-          <span class="av" style="width:30px;height:30px;" :style="{ background: r.color }">{{ r.initials }}</span>
-          <div style="flex:1;"><div style="font-weight:600;">{{ r.member }}</div><div class="sub">reward: {{ r.name }} · {{ r.costCoins }} coins</div></div>
-          <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.fulfill(r.id))"><i class="ti ti-check" aria-hidden="true"></i> Fulfill</button>
-          <button class="chip" @click="act(() => api.admin.cancel(r.id))">refund</button>
+        <div v-for="r in pendingRewards" :key="'pr' + r.id" class="card row" style="gap:10px;">
+          <span class="av" style="width:30px;height:30px;background:#EFE0F0;color:#6E5E94;"><i class="ti ti-gift" aria-hidden="true"></i></span>
+          <div style="flex:1;"><div style="font-weight:600;">{{ r.name }}</div><div class="sub">offer by {{ r.ownerName }} · {{ r.costCoins }} coins · {{ r.ownerCut }}% cut</div></div>
+          <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.approveReward(r.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
+          <button class="chip" @click="act(() => api.admin.denyReward(r.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
       </template>
 
@@ -160,7 +161,7 @@ async function addBook(l) {
       <!-- QUESTS -->
       <template v-if="tab === 'quests'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">Create quest</div>
+          <div class="sub">Create quest or challenge</div>
           <input v-model="qForm.title" placeholder="Title" />
           <input v-model="qForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
@@ -172,10 +173,10 @@ async function addBook(l) {
             <input v-model.number="qForm.rewardCoins" type="number" min="0" placeholder="Reward coins" />
           </div>
           <label v-if="qForm.type === 'manual'" class="sub row" style="gap:8px;"><input type="checkbox" v-model="qForm.requiresApproval" style="width:auto;" /> Requires approval</label>
-          <button class="btn" @click="createQuest"><i class="ti ti-plus" aria-hidden="true"></i> Create quest</button>
+          <button class="btn" @click="createQuest"><i class="ti ti-plus" aria-hidden="true"></i> Create</button>
         </div>
         <div v-for="q in quests" :key="q.id" class="card row" style="padding:10px 13px;" :style="q.active ? {} : { opacity: .5 }">
-          <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">{{ q.type }} · +{{ q.reward_coins }}</span></div>
+          <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">{{ q.type === 'manual' ? 'challenge' : q.type }} · +{{ q.reward_coins }}</span></div>
           <button v-if="q.active" class="chip" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
           <span v-else class="sub">retired</span>
         </div>
@@ -184,21 +185,32 @@ async function addBook(l) {
       <!-- REWARDS -->
       <template v-if="tab === 'rewards'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">Create reward</div>
+          <div class="sub">Create reward (house — goes live immediately)</div>
           <input v-model="rForm.name" placeholder="Name" />
           <input v-model="rForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
             <input v-model.number="rForm.costCoins" type="number" min="0" placeholder="Cost" />
-            <select v-model="rForm.tier" style="width:100px;"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
-            <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (∞)" style="width:120px;" />
+            <select v-model="rForm.tier" style="width:90px;"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
+            <input v-model.number="rForm.ownerCut" type="number" min="0" max="100" style="width:90px;" placeholder="Cut %" />
           </div>
+          <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (blank = unlimited)" />
           <button class="btn" @click="createReward"><i class="ti ti-plus" aria-hidden="true"></i> Create reward</button>
         </div>
-        <div v-for="r in rewards" :key="r.id" class="card row" style="padding:10px 13px;" :style="r.active ? {} : { opacity: .5 }">
-          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.cost_coins }} · {{ r.tier }}</span></div>
-          <button v-if="r.active" class="chip" @click="act(() => api.admin.deleteReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
-          <span v-else class="sub">retired</span>
+
+        <div v-for="r in liveRewards" :key="r.id" class="card row" style="padding:10px 13px;">
+          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · {{ r.ownerCut }}% · {{ r.ownerName }}</span></div>
+          <button class="chip" @click="act(() => api.admin.deleteReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
+
+        <template v-if="redemptions.length">
+          <div class="sub" style="margin-top:6px;">Pending deliveries (oversight)</div>
+          <div v-for="rd in redemptions" :key="'rd' + rd.id" class="card row" style="gap:10px;">
+            <span class="av" style="width:30px;height:30px;" :style="{ background: rd.color }">{{ rd.initials }}</span>
+            <div style="flex:1;"><div style="font-weight:600;">{{ rd.name }}</div><div class="sub">{{ rd.member }} → owner {{ rd.owner }}</div></div>
+            <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.fulfillRedemption(rd.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
+            <button class="chip" @click="act(() => api.cancelRedemption(rd.id))">refund</button>
+          </div>
+        </template>
       </template>
 
       <!-- LISTS -->

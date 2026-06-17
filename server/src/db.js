@@ -120,6 +120,15 @@ if (!memberCols.includes('role')) {
   db.exec("ALTER TABLE members ADD COLUMN role TEXT NOT NULL DEFAULT 'member'");
 }
 
+// --- migration: member-owned rewards (owner, status, cut %) ---
+const rewardCols = db.prepare('PRAGMA table_info(rewards)').all().map((c) => c.name);
+if (!rewardCols.includes('owner_id')) db.exec('ALTER TABLE rewards ADD COLUMN owner_id INTEGER');
+if (!rewardCols.includes('owner_cut')) db.exec('ALTER TABLE rewards ADD COLUMN owner_cut INTEGER NOT NULL DEFAULT 0');
+if (!rewardCols.includes('status')) {
+  db.exec("ALTER TABLE rewards ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'");
+  db.exec("UPDATE rewards SET status = CASE WHEN active = 0 THEN 'archived' ELSE 'approved' END");
+}
+
 // --- one-time bootstrap: seed a single admin on a brand-new database ---
 // (real members are created from the admin portal; the `seeded` flag means
 //  clearing all members later never re-creates a placeholder)
@@ -180,4 +189,10 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'lists_seeded'").get()) {
     console.log('[bookcoin] seeded a Classics reading list');
   }
   db.prepare("INSERT INTO meta (key, value) VALUES ('lists_seeded', '1')").run();
+}
+
+// any reward without an owner belongs to the first admin (legacy / house rewards)
+{
+  const houseAdmin = db.prepare("SELECT id FROM members WHERE role = 'admin' ORDER BY id LIMIT 1").get();
+  if (houseAdmin) db.prepare('UPDATE rewards SET owner_id = ? WHERE owner_id IS NULL').run(houseAdmin.id);
 }

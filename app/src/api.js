@@ -33,8 +33,13 @@ export const api = {
   claimQuest: (id) => req(`/quests/${id}/claim`, { method: 'POST' }),
 
   rewards: () => req('/rewards'),
+  createReward: (b) => req('/rewards', { method: 'POST', body: b }),
+  archiveReward: (id) => req(`/rewards/${id}/archive`, { method: 'POST' }),
   redeemReward: (id) => req(`/rewards/${id}/redeem`, { method: 'POST' }),
   myRedemptions: () => req('/me/redemptions'),
+  myOffers: () => req('/me/offers'),
+  fulfillRedemption: (id) => req(`/redemptions/${id}/fulfill`, { method: 'POST' }),
+  cancelRedemption: (id) => req(`/redemptions/${id}/cancel`, { method: 'POST' }),
   lists: () => req('/lists'),
 
   admin: {
@@ -46,11 +51,10 @@ export const api = {
     createQuest: (b) => req('/admin/quests', { method: 'POST', body: b }),
     deleteQuest: (id) => req(`/admin/quests/${id}`, { method: 'DELETE' }),
     rewards: () => req('/admin/rewards'),
-    createReward: (b) => req('/admin/rewards', { method: 'POST', body: b }),
+    approveReward: (id, b) => req(`/admin/rewards/${id}/approve`, { method: 'POST', body: b || {} }),
+    denyReward: (id) => req(`/admin/rewards/${id}/deny`, { method: 'POST' }),
     deleteReward: (id) => req(`/admin/rewards/${id}`, { method: 'DELETE' }),
     redemptions: () => req('/admin/redemptions'),
-    fulfill: (id) => req(`/admin/redemptions/${id}/fulfill`, { method: 'POST' }),
-    cancel: (id) => req(`/admin/redemptions/${id}/cancel`, { method: 'POST' }),
     claims: () => req('/admin/quest-claims'),
     approveClaim: (id) => req(`/admin/quest-claims/${id}/approve`, { method: 'POST' }),
     rejectClaim: (id) => req(`/admin/quest-claims/${id}/reject`, { method: 'POST' }),
