@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { api } from '../api';
 import { store } from '../store';
+import { usd } from '../data';
 
 const data = ref(null);
 const redemptions = ref([]);
@@ -83,7 +84,7 @@ function submitOffer() {
           <label class="sub" style="flex:1;">Price <input v-model.number="form.costCoins" type="number" min="0" /></label>
           <label class="sub" style="flex:1;">Your cut % <input v-model.number="form.ownerCut" type="number" min="0" max="100" /></label>
         </div>
-        <div class="sub">You keep {{ Math.round(form.costCoins * form.ownerCut / 100) }} coins; the rest is spent.</div>
+        <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. You keep {{ Math.round(form.costCoins * form.ownerCut / 100) }} coins; the rest is spent.</div>
         <button class="btn" :disabled="busy" @click="submitOffer"><i class="ti ti-check" aria-hidden="true"></i> {{ store.member.role === 'admin' ? 'Add reward' : 'Submit for approval' }}</button>
       </div>
 

@@ -125,6 +125,19 @@ db.exec(`
     month TEXT NOT NULL,
     PRIMARY KEY (member_id, month)
   );
+
+  -- personal bookshelf
+  CREATE TABLE IF NOT EXISTS member_books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id INTEGER NOT NULL REFERENCES members(id),
+    title TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'reading',   -- want | reading | finished
+    rating INTEGER,                           -- 1-5, finished only
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // --- migration: add members.role to pre-existing databases ---
@@ -132,6 +145,11 @@ const memberCols = db.prepare('PRAGMA table_info(members)').all().map((c) => c.n
 if (!memberCols.includes('role')) {
   db.exec("ALTER TABLE members ADD COLUMN role TEXT NOT NULL DEFAULT 'member'");
 }
+
+// --- migration: personalization (free) — app theme + avatar emblem + mascot ---
+if (!memberCols.includes('theme')) db.exec("ALTER TABLE members ADD COLUMN theme TEXT NOT NULL DEFAULT 'classic'");
+if (!memberCols.includes('emblem')) db.exec("ALTER TABLE members ADD COLUMN emblem TEXT NOT NULL DEFAULT ''");
+if (!memberCols.includes('mascot')) db.exec("ALTER TABLE members ADD COLUMN mascot TEXT NOT NULL DEFAULT 'wizard'");
 
 // --- migration: member-owned rewards (owner, status, cut %) ---
 const rewardCols = db.prepare('PRAGMA table_info(rewards)').all().map((c) => c.name);
@@ -177,13 +195,14 @@ if (db.prepare('SELECT COUNT(*) AS n FROM quests').get().n === 0) {
 
 // --- seed starter rewards ---
 if (db.prepare('SELECT COUNT(*) AS n FROM rewards').get().n === 0) {
+  // prices anchored at 100 coins = $1 (a ~15 hr reading month ≈ 1,000 coins ≈ a boba)
   const r = db.prepare('INSERT INTO rewards (name, description, cost_coins, tier, stock) VALUES (?, ?, ?, ?, ?)');
-  r.run('Pick movie night', 'Choose what the family watches this weekend', 150, 'low', null);
-  r.run('Skip a chore', 'Get out of one chore, no questions asked', 200, 'low', null);
-  r.run('Choose dinner', 'Pick what’s for dinner one night', 250, 'low', null);
-  r.run('Boba run', 'A boba of your choice', 400, 'mid', null);
-  r.run('New book', 'Pick a book to buy', 700, 'mid', null);
-  r.run('$10 game credit', 'Steam / eShop / PSN credit of your choice', 1200, 'high', null);
+  r.run('Pick movie night', 'Choose what the family watches this weekend', 500, 'low', null);
+  r.run('Skip a chore', 'Get out of one chore, no questions asked', 600, 'low', null);
+  r.run('Choose dinner', 'Pick what’s for dinner one night', 400, 'low', null);
+  r.run('Boba run', 'A boba of your choice', 1000, 'mid', null);
+  r.run('New book', 'Pick a book to buy', 1500, 'high', null);
+  r.run('$10 game credit', 'Steam / eShop / PSN credit of your choice', 1000, 'high', null);
   console.log('[bookcoin] seeded starter rewards');
 }
 
@@ -258,4 +277,21 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'seed_extra_1'").get()) {
 
   db.prepare("INSERT INTO meta (key, value) VALUES ('seed_extra_1', '1')").run();
   console.log('[bookcoin] seeded 8 challenges + 6 reading lists');
+}
+
+// --- economy v2: conscious money anchor (100 coins = $1) — re-price the default
+//     rewards on existing DBs. Matches name + original price, so anything an admin
+//     has already re-priced is left untouched. ---
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'econ_v2'").get()) {
+  const reprice = db.prepare('UPDATE rewards SET cost_coins = ? WHERE name = ? AND cost_coins = ?');
+  for (const [name, oldP, newP] of [
+    ['Pick movie night', 150, 500],
+    ['Skip a chore', 200, 600],
+    ['Choose dinner', 250, 400],
+    ['Boba run', 400, 1000],
+    ['New book', 700, 1500],
+    ['$10 game credit', 1200, 1000],
+  ]) reprice.run(newP, name, oldP);
+  db.prepare("INSERT INTO meta (key, value) VALUES ('econ_v2', '1')").run();
+  console.log('[bookcoin] economy v2 — anchored default reward prices to 100 coins = $1');
 }

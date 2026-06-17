@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
+import { usd } from '../data';
 
 const router = useRouter();
 const allowed = ref(true);
@@ -18,10 +19,11 @@ const lists = ref([]);
 
 const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' });
-const qForm = reactive({ title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
-const rForm = reactive({ name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 });
-const lForm = reactive({ name: '', description: '' });
+const qForm = reactive({ id: null, title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
+const rForm = reactive({ id: null, name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 });
+const lForm = reactive({ id: null, name: '', description: '' });
 const bookInput = reactive({});
+const bookEdit = reactive({});
 
 const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['genres', 'Genres read'], ['mediums', 'Formats read'], ['streak', 'Day streak'], ['manual', 'Manual / bounty']];
 const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
@@ -67,30 +69,48 @@ function removeMember(m) {
   act(() => api.admin.deleteMember(m.id));
 }
 
-async function createQuest() {
-  if (!qForm.title) return;
-  await act(() => api.admin.createQuest({ ...qForm }));
-  toast.value = 'Quest created'; qForm.title = ''; qForm.description = '';
+function resetQuest() { Object.assign(qForm, { id: null, title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false }); }
+function editQuest(q) {
+  Object.assign(qForm, { id: q.id, title: q.title, description: q.description || '', type: q.type, target: q.target, rewardCoins: q.reward_coins, period: q.period, requiresApproval: !!q.requires_approval });
 }
-async function createReward() {
-  if (!rForm.name) return;
-  await act(() => api.createReward({ ...rForm }));
-  toast.value = 'Reward added'; rForm.name = ''; rForm.description = '';
+async function saveQuest() {
+  if (!qForm.title.trim()) { toast.value = 'Title required'; return; }
+  const editing = qForm.id;
+  await act(() => editing ? api.admin.updateQuest(editing, { ...qForm }) : api.admin.createQuest({ ...qForm }));
+  toast.value = editing ? 'Quest saved' : 'Quest created'; resetQuest();
 }
-async function createList() {
-  if (!lForm.name.trim()) return;
-  await act(() => api.admin.createList({ ...lForm }));
-  toast.value = 'List created'; lForm.name = ''; lForm.description = '';
+
+function resetReward() { Object.assign(rForm, { id: null, name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 }); }
+function editReward(r) {
+  Object.assign(rForm, { id: r.id, name: r.name, description: r.description || '', costCoins: r.costCoins, tier: r.tier, stock: r.stock ?? '', ownerCut: r.ownerCut });
+}
+async function saveReward() {
+  if (!rForm.name.trim()) { toast.value = 'Name required'; return; }
+  const editing = rForm.id;
+  await act(() => editing ? api.admin.updateReward(editing, { ...rForm }) : api.createReward({ ...rForm }));
+  toast.value = editing ? 'Reward saved' : 'Reward added'; resetReward();
+}
+
+function resetList() { Object.assign(lForm, { id: null, name: '', description: '' }); }
+function editList(l) { Object.assign(lForm, { id: l.id, name: l.name, description: l.description || '' }); }
+async function saveList() {
+  if (!lForm.name.trim()) { toast.value = 'Name required'; return; }
+  const editing = lForm.id;
+  await act(() => editing ? api.admin.updateList(editing, { ...lForm }) : api.admin.createList({ ...lForm }));
+  toast.value = editing ? 'List saved' : 'List created'; resetList();
 }
 function removeList(l) {
   if (!confirm(`Delete the "${l.name}" list and its books?`)) return;
   act(() => api.admin.deleteList(l.id));
 }
+function editBook(l, b) { bookInput[l.id] = { title: b.title, author: b.author || '' }; bookEdit[l.id] = b.id; }
+function cancelBook(l) { bookInput[l.id] = { title: '', author: '' }; bookEdit[l.id] = null; }
 async function addBook(l) {
   const bi = bookInput[l.id];
   if (!bi || !bi.title.trim()) return;
-  await act(() => api.admin.addBook(l.id, { title: bi.title.trim(), author: bi.author }));
-  bi.title = ''; bi.author = '';
+  const editing = bookEdit[l.id];
+  await act(() => editing ? api.admin.updateBook(editing, { title: bi.title.trim(), author: bi.author }) : api.admin.addBook(l.id, { title: bi.title.trim(), author: bi.author }));
+  bi.title = ''; bi.author = ''; bookEdit[l.id] = null;
 }
 </script>
 
@@ -161,7 +181,7 @@ async function addBook(l) {
       <!-- QUESTS -->
       <template v-if="tab === 'quests'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">Create quest or challenge</div>
+          <div class="sub">{{ qForm.id ? 'Edit quest or challenge' : 'Create quest or challenge' }}</div>
           <input v-model="qForm.title" placeholder="Title" />
           <input v-model="qForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
@@ -173,11 +193,15 @@ async function addBook(l) {
             <input v-model.number="qForm.rewardCoins" type="number" min="0" placeholder="Reward coins" />
           </div>
           <label v-if="qForm.type === 'manual'" class="sub row" style="gap:8px;"><input type="checkbox" v-model="qForm.requiresApproval" style="width:auto;" /> Requires approval</label>
-          <button class="btn" @click="createQuest"><i class="ti ti-plus" aria-hidden="true"></i> Create</button>
+          <button class="btn" @click="saveQuest"><i :class="qForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ qForm.id ? 'Save quest' : 'Create' }}</button>
+          <button v-if="qForm.id" class="chip" @click="resetQuest">Cancel</button>
         </div>
-        <div v-for="q in quests" :key="q.id" class="card row" style="padding:10px 13px;" :style="q.active ? {} : { opacity: .5 }">
+        <div v-for="q in quests" :key="q.id" class="card row" style="padding:10px 13px;gap:8px;" :style="q.active ? {} : { opacity: .5 }">
           <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">{{ q.type === 'manual' ? 'challenge' : q.type }} · +{{ q.reward_coins }}</span></div>
-          <button v-if="q.active" class="chip" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          <template v-if="q.active">
+            <button class="chip" aria-label="edit" @click="editQuest(q)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+            <button class="chip" aria-label="retire" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          </template>
           <span v-else class="sub">retired</span>
         </div>
       </template>
@@ -185,7 +209,7 @@ async function addBook(l) {
       <!-- REWARDS -->
       <template v-if="tab === 'rewards'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">Create reward (house — goes live immediately)</div>
+          <div class="sub">{{ rForm.id ? 'Edit reward' : 'Create reward (house — goes live immediately)' }}</div>
           <input v-model="rForm.name" placeholder="Name" />
           <input v-model="rForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
@@ -194,12 +218,15 @@ async function addBook(l) {
             <input v-model.number="rForm.ownerCut" type="number" min="0" max="100" style="width:90px;" placeholder="Cut %" />
           </div>
           <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (blank = unlimited)" />
-          <button class="btn" @click="createReward"><i class="ti ti-plus" aria-hidden="true"></i> Create reward</button>
+          <div class="sub" style="margin-top:-2px;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ rForm.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(rForm.costCoins) }}</strong> <span style="opacity:.7;">(100 coins = $1)</span></div>
+          <button class="btn" @click="saveReward"><i :class="rForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ rForm.id ? 'Save reward' : 'Create reward' }}</button>
+          <button v-if="rForm.id" class="chip" @click="resetReward">Cancel</button>
         </div>
 
-        <div v-for="r in liveRewards" :key="r.id" class="card row" style="padding:10px 13px;">
-          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · {{ r.ownerCut }}% · {{ r.ownerName }}</span></div>
-          <button class="chip" @click="act(() => api.admin.deleteReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+        <div v-for="r in liveRewards" :key="r.id" class="card row" style="padding:10px 13px;gap:8px;">
+          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} (≈{{ usd(r.costCoins) }}) · {{ r.ownerCut }}% · {{ r.ownerName }}</span></div>
+          <button class="chip" aria-label="edit" @click="editReward(r)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+          <button class="chip" aria-label="archive" @click="act(() => api.admin.deleteReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
 
         <template v-if="redemptions.length">
@@ -216,24 +243,28 @@ async function addBook(l) {
       <!-- LISTS -->
       <template v-if="tab === 'lists'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">Create reading list</div>
+          <div class="sub">{{ lForm.id ? 'Edit reading list' : 'Create reading list' }}</div>
           <input v-model="lForm.name" placeholder="List name (e.g. Classics)" />
           <input v-model="lForm.description" placeholder="Description (optional)" />
-          <button class="btn" @click="createList"><i class="ti ti-plus" aria-hidden="true"></i> Create list</button>
+          <button class="btn" @click="saveList"><i :class="lForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ lForm.id ? 'Save list' : 'Create list' }}</button>
+          <button v-if="lForm.id" class="chip" @click="resetList">Cancel</button>
         </div>
         <div v-for="l in lists" :key="l.id" class="card" style="display:flex;flex-direction:column;gap:10px;">
-          <div class="row" style="justify-content:space-between;">
-            <div><span style="font-weight:600;">{{ l.name }}</span> <span class="sub">{{ l.books.length }} book{{ l.books.length === 1 ? '' : 's' }}</span></div>
-            <button class="chip" @click="removeList(l)"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          <div class="row" style="justify-content:space-between;gap:8px;">
+            <div style="flex:1;min-width:0;"><span style="font-weight:600;">{{ l.name }}</span> <span class="sub">{{ l.books.length }} book{{ l.books.length === 1 ? '' : 's' }}</span></div>
+            <button class="chip" aria-label="edit list" @click="editList(l)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+            <button class="chip" aria-label="delete list" @click="removeList(l)"><i class="ti ti-trash" aria-hidden="true"></i></button>
           </div>
           <div v-for="b in l.books" :key="b.id" class="row" style="gap:8px;font-size:14px;">
             <span style="flex:1;"><span style="font-weight:600;">{{ b.title }}</span><span v-if="b.author" class="sub"> · {{ b.author }}</span></span>
-            <button class="chip" style="padding:4px 9px;" @click="act(() => api.admin.deleteBook(b.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
+            <button class="chip" style="padding:4px 9px;" aria-label="edit book" @click="editBook(l, b)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+            <button class="chip" style="padding:4px 9px;" aria-label="remove book" @click="act(() => api.admin.deleteBook(b.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
           </div>
           <div v-if="bookInput[l.id]" class="row" style="gap:8px;">
-            <input v-model="bookInput[l.id].title" placeholder="Book title" style="flex:1;" />
-            <input v-model="bookInput[l.id].author" placeholder="Author" style="width:120px;" />
-            <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="addBook(l)"><i class="ti ti-plus" aria-hidden="true"></i></button>
+            <input v-model="bookInput[l.id].title" :placeholder="bookEdit[l.id] ? 'Edit title' : 'Book title'" style="flex:1;" />
+            <input v-model="bookInput[l.id].author" placeholder="Author" style="width:110px;" />
+            <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" :aria-label="bookEdit[l.id] ? 'save book' : 'add book'" @click="addBook(l)"><i :class="bookEdit[l.id] ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i></button>
+            <button v-if="bookEdit[l.id]" class="chip" aria-label="cancel" @click="cancelBook(l)"><i class="ti ti-x" aria-hidden="true"></i></button>
           </div>
         </div>
       </template>

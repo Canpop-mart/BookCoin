@@ -1,0 +1,22 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EC8A63"/>
+      <stop offset="1" stop-color="#D97F2E"/>
+    </linearGradient>
+    <linearGradient id="coin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FBDD86"/>
+      <stop offset="1" stop-color="#E2A52C"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <circle cx="512" cy="512" r="330" fill="url(#coin)" stroke="#B9791A" stroke-width="20"/>
+  <circle cx="512" cy="512" r="276" fill="none" stroke="#C58A1E" stroke-width="12" opacity="0.45"/>
+  <path d="M512 432 C 430 396, 358 398, 318 414 L 318 596 C 364 578, 444 578, 512 610 Z" fill="#FFFBF2"/>
+  <path d="M512 432 C 594 396, 666 398, 706 414 L 706 596 C 660 578, 580 578, 512 610 Z" fill="#FBEFD9"/>
+  <path d="M512 432 L 512 610" stroke="#D98F4F" stroke-width="14" stroke-linecap="round"/>
+  <g stroke="#E6B98A" stroke-width="11" stroke-linecap="round">
+    <path d="M372 460 H 470"/><path d="M372 506 H 470"/><path d="M372 552 H 462"/>
+    <path d="M554 460 H 652"/><path d="M554 506 H 652"/><path d="M562 552 H 652"/>
+  </g>
+</svg>

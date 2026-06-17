@@ -80,15 +80,19 @@ Two distinct concepts — **don't conflate them**:
 
 > **Design intent — the rhythm:** base earn is a steady *trickle*; quests (§8) are the *jackpots*. Reliable income from showing up, big bonuses from being adventurous.
 
-### Strawman numbers (all tunable)
+### Money anchor (conscious ratio)
+**100 coins = $1.** A solid ~15 hr reading month earns ~1,000 coins ≈ **$10 ≈ one boba** — so a dedicated month buys a real treat, and every reward's coin price has a clear dollar meaning. Reward-pricing UIs surface the `≈ $` equivalent so whoever sets a price does it consciously. Tunables live in `server/src/coins.js` (`COINS_PER_DOLLAR`, `BASE_COINS_PER_HOUR`).
+
+### Numbers (all tunable — see coins.js)
 | Source                         | Coins        |
 |--------------------------------|--------------|
-| Base earn                      | ~20 / hour read |
-| Comfort-zone log (new genre)   | base × 1.5–2 |
-| Genre Rainbow (5 genres/month) | +200 jackpot |
-| Medium Hopper (3 mediums/month)| +100         |
-| Monthly rank: 1st / 2nd / 3rd  | +300 / 200 / 100 |
-| Hit personal monthly goal      | +150         |
+| Base earn                      | ~67 / hour read (≈ $0.67) |
+| Comfort-zone log (new genre)   | base × 1.5   |
+| Monthly rank: 1st / 2nd / 3rd  | +300 / 200 / 100 ($3 / $2 / $1) |
+| Bonus star (most genres/sessions/pages/days/formats) | +100 each ($1) |
+| Quests / challenges            | ~80–300 ($0.80–$3) |
+
+Seed reward prices anchor to this: boba / $10 game credit = 1,000; new book = 1,500; movie night = 500; choose dinner = 400; skip a chore = 600.
 
 ---
 
