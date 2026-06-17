@@ -98,6 +98,22 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS lists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS list_books (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    list_id INTEGER NOT NULL REFERENCES lists(id),
+    title TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 // --- migration: add members.role to pre-existing databases ---
 const memberCols = db.prepare('PRAGMA table_info(members)').all().map((c) => c.name);
 if (!memberCols.includes('role')) {
@@ -147,4 +163,21 @@ if (db.prepare('SELECT COUNT(*) AS n FROM rewards').get().n === 0) {
   r.run('New book', 'Pick a book to buy', 700, 'mid', null);
   r.run('$10 game credit', 'Steam / eShop / PSN credit of your choice', 1200, 'high', null);
   console.log('[bookcoin] seeded starter rewards');
+}
+
+// --- seed a starter reading list (separate flag so it appears for existing DBs too) ---
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'lists_seeded'").get()) {
+  if (db.prepare('SELECT COUNT(*) AS n FROM lists').get().n === 0) {
+    const lid = Number(db.prepare('INSERT INTO lists (name, description) VALUES (?, ?)')
+      .run('Classics', 'Timeless books worth reading at least once').lastInsertRowid);
+    const addBook = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)');
+    for (const [t, a] of [
+      ['Pride and Prejudice', 'Jane Austen'], ['1984', 'George Orwell'],
+      ['To Kill a Mockingbird', 'Harper Lee'], ['The Great Gatsby', 'F. Scott Fitzgerald'],
+      ['Jane Eyre', 'Charlotte Brontë'], ['Frankenstein', 'Mary Shelley'],
+      ['The Hobbit', 'J.R.R. Tolkien'], ['Fahrenheit 451', 'Ray Bradbury'],
+    ]) addBook.run(lid, t, a);
+    console.log('[bookcoin] seeded a Classics reading list');
+  }
+  db.prepare("INSERT INTO meta (key, value) VALUES ('lists_seeded', '1')").run();
 }

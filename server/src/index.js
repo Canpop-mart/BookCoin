@@ -461,6 +461,40 @@ api.delete('/admin/members/:id', (c) => {
   return c.body(null, 204);
 });
 
+// ---- reading lists ----
+api.get('/lists', (c) => {
+  const lists = db.prepare('SELECT id, name, description FROM lists ORDER BY id').all();
+  const books = db.prepare('SELECT id, list_id AS listId, title, author FROM list_books ORDER BY id').all();
+  return c.json(lists.map((l) => ({ ...l, books: books.filter((b) => b.listId === l.id) })));
+});
+
+api.post('/admin/lists', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!(b.name || '').trim()) return c.json({ error: 'Name required' }, 400);
+  const info = db.prepare('INSERT INTO lists (name, description) VALUES (?, ?)').run(b.name.trim(), b.description || '');
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.delete('/admin/lists/:id', (c) => {
+  const id = Number(c.req.param('id'));
+  db.prepare('DELETE FROM list_books WHERE list_id = ?').run(id);
+  db.prepare('DELETE FROM lists WHERE id = ?').run(id);
+  return c.body(null, 204);
+});
+
+api.post('/admin/lists/:id/books', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!(b.title || '').trim()) return c.json({ error: 'Title required' }, 400);
+  const info = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)')
+    .run(Number(c.req.param('id')), b.title.trim(), b.author || '');
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.delete('/admin/lists/books/:bookId', (c) => {
+  db.prepare('DELETE FROM list_books WHERE id = ?').run(Number(c.req.param('bookId')));
+  return c.body(null, 204);
+});
+
 // unknown /api/* routes return JSON 404 (never fall through to the SPA shell,
 // so a stale server/app mismatch fails cleanly instead of returning HTML)
 api.all('*', (c) => c.json({ error: 'Unknown endpoint' }, 404));

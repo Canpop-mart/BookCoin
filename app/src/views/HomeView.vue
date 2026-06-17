@@ -27,7 +27,7 @@ const top3 = computed(() => rows.value.slice(0, 3));
 
 const monthMinutes = computed(() => profile.value?.monthMinutes ?? 0);
 const goal = computed(() => profile.value?.member?.monthlyGoalMinutes || 900);
-const claimable = computed(() => quests.value.filter((q) => !['claimed', 'approved', 'pending'].includes(q.claimStatus) && (q.type === 'manual' || q.complete)).length);
+const claimable = computed(() => quests.value.filter((q) => q.type !== 'manual' && q.complete && !['claimed', 'approved', 'pending'].includes(q.claimStatus)).length);
 const streak = computed(() => {
   const days = new Set((profile.value?.recent || []).map((s) => (s.createdAt || '').slice(0, 10)));
   let n = 0; const d = new Date();

@@ -35,6 +35,7 @@ export const api = {
   rewards: () => req('/rewards'),
   redeemReward: (id) => req(`/rewards/${id}/redeem`, { method: 'POST' }),
   myRedemptions: () => req('/me/redemptions'),
+  lists: () => req('/lists'),
 
   admin: {
     members: () => req('/admin/members'),
@@ -53,5 +54,9 @@ export const api = {
     claims: () => req('/admin/quest-claims'),
     approveClaim: (id) => req(`/admin/quest-claims/${id}/approve`, { method: 'POST' }),
     rejectClaim: (id) => req(`/admin/quest-claims/${id}/reject`, { method: 'POST' }),
+    createList: (b) => req('/admin/lists', { method: 'POST', body: b }),
+    deleteList: (id) => req(`/admin/lists/${id}`, { method: 'DELETE' }),
+    addBook: (listId, b) => req(`/admin/lists/${listId}/books`, { method: 'POST', body: b }),
+    deleteBook: (bookId) => req(`/admin/lists/books/${bookId}`, { method: 'DELETE' }),
   },
 };

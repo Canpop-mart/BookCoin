@@ -14,5 +14,6 @@ export const store = reactive({
     }));
   },
   setAuth(token, member) { this.token = token; this.member = member; this.save(); },
+  setMember(member) { if (member) { this.member = member; this.save(); } },
   logout() { this.token = null; this.member = null; this.draft = null; this.save(); },
 });

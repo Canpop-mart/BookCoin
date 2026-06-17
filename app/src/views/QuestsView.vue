@@ -1,7 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { api } from '../api';
 
+const router = useRouter();
 const quests = ref([]);
 const busy = ref(null);
 const toast = ref('');
@@ -42,7 +44,10 @@ async function claim(q) {
 <template>
   <div class="screen">
     <CoinBurst v-if="burst" />
-    <div class="h"><i class="ti ti-wand" style="color:var(--terra);" aria-hidden="true"></i> Quests</div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="h"><i class="ti ti-wand" style="color:var(--terra);" aria-hidden="true"></i> Quests</div>
+      <button class="chip" @click="router.push('/lists')"><i class="ti ti-books" aria-hidden="true"></i> Reading lists</button>
+    </div>
     <p v-if="toast" class="sub pop-in" style="text-align:center;color:var(--gold-d);">{{ toast }}</p>
 
     <template v-if="ready.length">
