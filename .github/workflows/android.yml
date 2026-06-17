@@ -3,6 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [main]
+    tags: ['v*']
     paths:
       - 'app/**'
       - '.github/workflows/android.yml'
@@ -68,3 +69,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: bookcoin.apk
+          generate_release_notes: true
