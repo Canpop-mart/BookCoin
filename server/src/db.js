@@ -104,24 +104,22 @@ if (!memberCols.includes('role')) {
   db.exec("ALTER TABLE members ADD COLUMN role TEXT NOT NULL DEFAULT 'member'");
 }
 
-// --- seed the family on first run (default PIN 1234) ---
-if (db.prepare('SELECT COUNT(*) AS n FROM members').get().n === 0) {
-  const insert = db.prepare(
-    'INSERT INTO members (name, initials, color, pin, monthly_goal_minutes, role) VALUES (?, ?, ?, ?, ?, ?)'
-  );
-  const seed = [
-    ['Mara', 'MA', '#E0785A', '1234', 900, 'admin'],
-    ['Dad', 'DA', '#8FA97C', '1234', 900, 'member'],
-    ['Mom', 'MO', '#D99A2B', '1234', 600, 'member'],
-    ['Sofia', 'SO', '#C58BA6', '1234', 600, 'member'],
-    ['Leo', 'LE', '#7BA6C4', '1234', 450, 'member'],
-  ];
-  for (const m of seed) insert.run(...m);
-  console.log(`[bookcoin] seeded ${seed.length} family members (default PIN 1234, Mara is admin)`);
+// --- one-time bootstrap: seed a single admin on a brand-new database ---
+// (real members are created from the admin portal; the `seeded` flag means
+//  clearing all members later never re-creates a placeholder)
+db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);');
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'seeded'").get()) {
+  if (db.prepare('SELECT COUNT(*) AS n FROM members').get().n === 0) {
+    db.prepare('INSERT INTO members (name, initials, color, pin, monthly_goal_minutes, role) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('Admin', 'AD', '#E0785A', '1234', 900, 'admin');
+    console.log('[bookcoin] fresh database — seeded one Admin account (PIN 1234). Create real members in the admin portal.');
+  }
+  db.prepare("INSERT INTO meta (key, value) VALUES ('seeded', '1')").run();
 }
 
-// ensure at least one admin exists
-if (db.prepare("SELECT COUNT(*) AS n FROM members WHERE role='admin'").get().n === 0) {
+// safety net: never end up with zero admins while members exist
+if (db.prepare('SELECT COUNT(*) AS n FROM members').get().n > 0
+    && db.prepare("SELECT COUNT(*) AS n FROM members WHERE role='admin'").get().n === 0) {
   db.exec("UPDATE members SET role='admin' WHERE id=(SELECT MIN(id) FROM members)");
 }
 

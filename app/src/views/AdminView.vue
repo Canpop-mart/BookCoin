@@ -5,12 +5,15 @@ import { api } from '../api';
 
 const router = useRouter();
 const allowed = ref(true);
+const members = ref([]);
 const quests = ref([]);
 const rewards = ref([]);
 const redemptions = ref([]);
 const claims = ref([]);
 const toast = ref('');
 
+const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
+const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' });
 const qForm = reactive({ title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
 const rForm = reactive({ name: '', description: '', costCoins: 200, tier: 'low', stock: '' });
 
@@ -19,8 +22,8 @@ const pendingRedemptions = computed(() => redemptions.value.filter((r) => r.stat
 
 async function load() {
   try {
-    [quests.value, rewards.value, redemptions.value, claims.value] = await Promise.all([
-      api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(),
+    [members.value, quests.value, rewards.value, redemptions.value, claims.value] = await Promise.all([
+      api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(),
     ]);
   } catch (e) {
     if (/admin/i.test(e.message)) allowed.value = false;
@@ -29,6 +32,29 @@ async function load() {
 onMounted(load);
 
 async function act(fn) { try { await fn(); await load(); } catch (e) { toast.value = e.message; } }
+
+function resetMember() { Object.assign(mForm, { id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' }); }
+function editMember(m) {
+  Object.assign(mForm, { id: m.id, name: m.name, pin: '', role: m.role, goalHours: Math.round(m.monthlyGoalMinutes / 60 * 2) / 2, color: m.color });
+}
+async function saveMember() {
+  if (!mForm.name.trim()) { toast.value = 'Name is required'; return; }
+  if (!mForm.id && !mForm.pin) { toast.value = 'Set a PIN'; return; }
+  const body = { name: mForm.name.trim(), role: mForm.role, monthlyGoalMinutes: Math.round(mForm.goalHours * 60), color: mForm.color || undefined };
+  if (mForm.pin) body.pin = mForm.pin;
+  try {
+    if (mForm.id) await api.admin.updateMember(mForm.id, body);
+    else await api.admin.createMember(body);
+    toast.value = mForm.id ? 'Member saved' : 'Member added';
+    resetMember();
+    await load();
+  } catch (e) { toast.value = e.message; }
+}
+function removeMember(m) {
+  if (!confirm(`Delete ${m.name}? This also removes their reading history and coins.`)) return;
+  act(() => api.admin.deleteMember(m.id));
+}
+
 async function createQuest() {
   if (!qForm.title) return;
   await act(() => api.admin.createQuest({ ...qForm }));
@@ -66,6 +92,34 @@ async function createReward() {
         <div style="flex:1;"><div style="font-weight:600;">{{ r.member }}</div><div class="sub">reward: {{ r.name }} · {{ r.costCoins }} coins</div></div>
         <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.fulfill(r.id))"><i class="ti ti-check" aria-hidden="true"></i> Fulfill</button>
         <button class="chip" @click="act(() => api.admin.cancel(r.id))">refund</button>
+      </div>
+
+      <div class="sub" style="margin-top:6px;">Members</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div v-for="m in members" :key="m.id" class="card row" style="padding:10px 13px;gap:10px;">
+          <span class="av" style="width:30px;height:30px;" :style="{ background: m.color }">{{ m.initials }}</span>
+          <div style="flex:1;">
+            <span style="font-weight:600;">{{ m.name }}</span>
+            <span v-if="m.role === 'admin'" class="chip" style="padding:2px 9px;margin-left:6px;background:var(--gold-bg);color:var(--gold-d);">admin</span>
+          </div>
+          <button class="chip" aria-label="edit" @click="editMember(m)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+          <button class="chip" aria-label="delete" @click="removeMember(m)"><i class="ti ti-trash" aria-hidden="true"></i></button>
+        </div>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;gap:9px;">
+        <div class="sub">{{ mForm.id ? 'Edit member' : 'Add member' }}</div>
+        <input v-model="mForm.name" placeholder="Name" />
+        <input v-model="mForm.pin" :placeholder="mForm.id ? 'New PIN (blank = keep)' : 'PIN'" inputmode="numeric" autocomplete="off" />
+        <div class="row" style="gap:8px;">
+          <select v-model="mForm.role" style="flex:1;"><option value="member">Member</option><option value="admin">Admin</option></select>
+          <input v-model.number="mForm.goalHours" type="number" min="0.5" step="0.5" style="width:108px;" placeholder="Goal (h)" />
+        </div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;">
+          <button v-for="c in COLORS" :key="c" aria-label="colour" @click="mForm.color = c"
+            :style="{ background: c, width: '28px', height: '28px', borderRadius: '50%', cursor: 'pointer', padding: 0, border: mForm.color === c ? '2px solid var(--ink)' : '2px solid transparent' }"></button>
+        </div>
+        <button class="btn" @click="saveMember"><i class="ti ti-check" aria-hidden="true"></i> {{ mForm.id ? 'Save member' : 'Add member' }}</button>
+        <button v-if="mForm.id" class="chip" @click="resetMember">Cancel</button>
       </div>
 
       <div class="sub" style="margin-top:6px;">Create quest</div>

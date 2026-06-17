@@ -23,6 +23,14 @@ const publicMember = (m) => ({
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
 const safeParse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 
+const MEMBER_COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
+const initialsFrom = (name) => {
+  const parts = name.trim().split(/\s+/);
+  return (parts.length >= 2 ? parts[0][0] + parts[1][0] : name.trim().slice(0, 2)).toUpperCase();
+};
+const clampGoal = (v) => Math.max(30, Math.min(6000, Math.round(Number(v) || 900)));
+const nextColor = () => MEMBER_COLORS[db.prepare('SELECT COUNT(*) AS n FROM members').get().n % MEMBER_COLORS.length];
+
 const rowToSession = (r) => ({
   id: r.id, memberId: r.member_id, title: r.title, author: r.author, medium: r.medium,
   genres: safeParse(r.genres), minutes: r.minutes, pages: r.pages, summary: r.summary,
@@ -386,6 +394,70 @@ api.post('/admin/quest-claims/:id/approve', (c) => {
 
 api.post('/admin/quest-claims/:id/reject', (c) => {
   db.prepare("UPDATE quest_claims SET status = 'rejected' WHERE id = ? AND status = 'pending'").run(Number(c.req.param('id')));
+  return c.body(null, 204);
+});
+
+// ---- admin: members ----
+api.get('/admin/members', (c) =>
+  c.json(db.prepare('SELECT id, name, initials, color, role, monthly_goal_minutes AS monthlyGoalMinutes FROM members ORDER BY id').all()));
+
+api.post('/admin/members', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const name = (b.name || '').trim();
+  if (!name) return c.json({ error: 'Name required' }, 400);
+  if (!b.pin) return c.json({ error: 'PIN required' }, 400);
+  const initials = (b.initials || initialsFrom(name)).slice(0, 2).toUpperCase();
+  const role = b.role === 'admin' ? 'admin' : 'member';
+  try {
+    const info = db.prepare('INSERT INTO members (name, initials, color, pin, role, monthly_goal_minutes) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(name, initials, b.color || nextColor(), String(b.pin), role, clampGoal(b.monthlyGoalMinutes));
+    return c.json({ id: Number(info.lastInsertRowid) });
+  } catch {
+    return c.json({ error: 'That name is taken' }, 400);
+  }
+});
+
+api.patch('/admin/members/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const m = db.prepare('SELECT * FROM members WHERE id = ?').get(id);
+  if (!m) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const name = b.name != null && String(b.name).trim() ? String(b.name).trim() : m.name;
+  const role = b.role ? (b.role === 'admin' ? 'admin' : 'member') : m.role;
+  if (m.role === 'admin' && role !== 'admin'
+      && db.prepare("SELECT COUNT(*) AS n FROM members WHERE role='admin'").get().n <= 1) {
+    return c.json({ error: 'Keep at least one admin' }, 400);
+  }
+  const goal = b.monthlyGoalMinutes != null ? clampGoal(b.monthlyGoalMinutes) : m.monthly_goal_minutes;
+  try {
+    db.prepare('UPDATE members SET name = ?, initials = ?, color = ?, role = ?, monthly_goal_minutes = ? WHERE id = ?')
+      .run(name, (b.initials || initialsFrom(name)).slice(0, 2).toUpperCase(), b.color || m.color, role, goal, id);
+  } catch {
+    return c.json({ error: 'That name is taken' }, 400);
+  }
+  if (b.pin) db.prepare('UPDATE members SET pin = ? WHERE id = ?').run(String(b.pin), id);
+  return c.json({ ok: true });
+});
+
+api.delete('/admin/members/:id', (c) => {
+  const id = Number(c.req.param('id'));
+  if (id === c.get('member').id) return c.json({ error: "You can't delete yourself" }, 400);
+  const m = db.prepare('SELECT * FROM members WHERE id = ?').get(id);
+  if (!m) return c.json({ error: 'Not found' }, 404);
+  if (m.role === 'admin' && db.prepare("SELECT COUNT(*) AS n FROM members WHERE role='admin'").get().n <= 1) {
+    return c.json({ error: 'Keep at least one admin' }, 400);
+  }
+  db.exec('BEGIN');
+  try {
+    for (const t of ['tokens', 'coin_txns', 'quest_claims', 'redemptions', 'sessions']) {
+      db.prepare(`DELETE FROM ${t} WHERE member_id = ?`).run(id);
+    }
+    db.prepare('DELETE FROM members WHERE id = ?').run(id);
+    db.exec('COMMIT');
+  } catch {
+    db.exec('ROLLBACK');
+    return c.json({ error: 'Could not delete member' }, 500);
+  }
   return c.body(null, 204);
 });
 
