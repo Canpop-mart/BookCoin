@@ -10,6 +10,7 @@ const busy = ref(false);
 const toast = ref('');
 const burst = ref(false);
 const view = ref('shop');
+const menuOpen = ref(false);
 const showOffer = ref(false);
 const form = reactive({ name: '', description: '', costCoins: 50, ownerCut: 50, tier: 'mid' });
 
@@ -17,6 +18,8 @@ async function load() {
   [data.value, redemptions.value, offers.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers()]);
 }
 onMounted(load);
+
+function setView(v) { view.value = v; menuOpen.value = false; }
 
 const tier = {
   low: { bg: 'var(--sage-bg)', fg: 'var(--sage-d)' },
@@ -50,15 +53,25 @@ function submitOffer() {
   <div class="screen" v-if="data">
     <CoinBurst v-if="burst" />
     <div class="row" style="justify-content:space-between;">
-      <div class="h"><i class="ti ti-gift" style="color:var(--terra);" aria-hidden="true"></i> Rewards</div>
+      <div style="position:relative;">
+        <button class="reward-switch" @click="menuOpen = !menuOpen">
+          <i class="ti ti-gift" style="color:var(--terra);" aria-hidden="true"></i>
+          {{ view === 'shop' ? 'Shop' : 'My offers' }}
+          <i class="ti ti-chevron-down" style="font-size:15px;color:var(--ink2);" aria-hidden="true"></i>
+        </button>
+        <template v-if="menuOpen">
+          <div @click="menuOpen = false" style="position:fixed;inset:0;z-index:20;"></div>
+          <div class="reward-menu">
+            <button @click="setView('shop')" :style="view === 'shop' ? { background: 'var(--cream)', fontWeight: 600 } : {}">Shop</button>
+            <button @click="setView('mine')" :style="view === 'mine' ? { background: 'var(--cream)', fontWeight: 600 } : {}">
+              My offers<span v-if="offers.toFulfill.length" style="margin-left:auto;color:var(--terra-d);">{{ offers.toFulfill.length }}</span>
+            </button>
+          </div>
+        </template>
+      </div>
       <span class="chip" style="background:var(--gold-bg);color:var(--gold-d);"><i class="ti ti-coin" aria-hidden="true"></i> <CoinCount :value="data.balance" /></span>
     </div>
     <p v-if="toast" class="sub pop-in" style="text-align:center;color:var(--gold-d);">{{ toast }}</p>
-
-    <div class="row" style="gap:7px;">
-      <button class="chip" :class="{ on: view === 'shop' }" style="flex:1;justify-content:center;" @click="view = 'shop'">Shop</button>
-      <button class="chip" :class="{ on: view === 'mine' }" style="flex:1;justify-content:center;" @click="view = 'mine'">Mine<span v-if="offers.toFulfill.length"> ({{ offers.toFulfill.length }})</span></button>
-    </div>
 
     <!-- ============ SHOP ============ -->
     <template v-if="view === 'shop'">
@@ -76,30 +89,30 @@ function submitOffer() {
 
       <div v-if="!data.rewards.length" class="card sub">No rewards yet — offer one above!</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:11px;">
-        <div v-for="r in data.rewards" :key="r.id" class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px;">
-            <div style="flex:1;">
-              <div style="font-weight:600;">{{ r.name }}</div>
-              <div class="sub" v-if="r.description">{{ r.description }}</div>
-            </div>
-            <span class="chip" :style="{ background: tier[r.tier].bg, color: tier[r.tier].fg, padding: '3px 10px' }">{{ r.tier }}</span>
+        <div v-for="r in data.rewards" :key="r.id" class="card" style="display:flex;gap:13px;align-items:center;">
+          <div style="width:48px;height:48px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"
+            :style="{ background: tier[r.tier].bg, color: tier[r.tier].fg }">
+            <i class="ti ti-gift" style="font-size:24px;" aria-hidden="true"></i>
           </div>
-          <div class="row" style="justify-content:space-between;align-items:center;gap:8px;">
-            <div class="row" style="gap:7px;min-width:0;">
-              <span class="av" style="width:24px;height:24px;font-size:10px;" :style="{ background: r.ownerColor }">{{ r.ownerInitials }}</span>
-              <span class="sub" style="white-space:nowrap;">{{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;">{{ r.name }}</div>
+            <div class="sub" v-if="r.description">{{ r.description }}</div>
+            <div class="row" style="gap:6px;margin-top:4px;">
+              <span class="av" style="width:18px;height:18px;font-size:8px;" :style="{ background: r.ownerColor }">{{ r.ownerInitials }}</span>
+              <span class="sub">{{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
             </div>
-            <span v-if="r.ownerId === store.member.id" class="chip" style="padding:6px 12px;">yours</span>
-            <button v-else class="btn" style="width:auto;padding:10px 16px;"
-              :disabled="busy || data.balance < r.costCoins || (r.stock != null && r.stock <= 0)" @click="redeem(r)">
-              <i class="ti ti-coin" aria-hidden="true"></i> {{ r.costCoins }}
-            </button>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">
+            <div style="font-weight:700;font-family:'Quicksand';color:var(--gold-d);white-space:nowrap;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ r.costCoins }}</div>
+            <span v-if="r.ownerId === store.member.id" class="chip" style="padding:5px 12px;">yours</span>
+            <button v-else class="btn" style="width:auto;padding:8px 16px;font-size:14px;"
+              :disabled="busy || data.balance < r.costCoins || (r.stock != null && r.stock <= 0)" @click="redeem(r)">Redeem</button>
           </div>
         </div>
       </div>
     </template>
 
-    <!-- ============ MINE ============ -->
+    <!-- ============ MY OFFERS ============ -->
     <template v-else>
       <div v-if="!offers.toFulfill.length && !offers.mine.length && !redemptions.length" class="card sub">
         Nothing here yet — redeem a reward or offer one of your own.
@@ -116,7 +129,7 @@ function submitOffer() {
       </template>
 
       <template v-if="offers.mine.length">
-        <div class="sub" style="margin-top:4px;">Your offers</div>
+        <div class="sub" style="margin-top:4px;">Listed by you</div>
         <div v-for="r in offers.mine" :key="r.id" class="card row" style="padding:11px 14px;gap:8px;">
           <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · {{ r.ownerCut }}% cut</span></div>
           <span class="chip" :style="statusStyle(r.status)" style="padding:3px 10px;">{{ r.status }}</span>
@@ -125,7 +138,7 @@ function submitOffer() {
       </template>
 
       <template v-if="redemptions.length">
-        <div class="sub" style="margin-top:4px;">Your redemptions</div>
+        <div class="sub" style="margin-top:4px;">Redeemed by you</div>
         <div v-for="rd in redemptions" :key="rd.id" class="card row" style="justify-content:space-between;padding:11px 14px;">
           <span>{{ rd.name }}</span>
           <span class="chip" :style="statusStyle(rd.status)">{{ rd.status === 'requested' ? 'pending' : rd.status }}</span>
@@ -134,3 +147,21 @@ function submitOffer() {
     </template>
   </div>
 </template>
+
+<style scoped>
+.reward-switch {
+  display: flex; align-items: center; gap: 7px;
+  background: none; border: none; cursor: pointer; padding: 0;
+  font-family: 'Quicksand', sans-serif; font-size: 18px; font-weight: 600; color: var(--ink);
+}
+.reward-menu {
+  position: absolute; top: 32px; left: 0; z-index: 21;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 6px; min-width: 160px; box-shadow: 0 8px 22px rgba(74, 63, 53, 0.14);
+}
+.reward-menu button {
+  display: flex; align-items: center; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; padding: 10px 12px;
+  border-radius: 10px; font-family: inherit; font-size: 14px; color: var(--ink);
+}
+</style>
