@@ -12,6 +12,23 @@ export const GENRES = [
   'Classic', 'Young adult', 'Adventure', 'Comedy',
 ];
 
+// conscious money anchor: 100 coins = $1 (keep in sync with server/src/coins.js)
+export const COINS_PER_DOLLAR = 100;
+
+// stable per-book spine look (colour + size variation), seeded from the title so a
+// book always renders the same on the shelf and in mini previews.
+const SPINE_COLORS = ['#A4553C', '#6E5E94', '#42562F', '#7A5410', '#8A4555', '#356084', '#3C6B40', '#9C7248', '#B07CC6', '#4E7A6B', '#C77B3E', '#566BA0'];
+export function bookSpine(b) {
+  const s = (b?.title || '') + '|' + (b?.author || '');
+  let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  h = Math.abs(h);
+  return { bg: SPINE_COLORS[h % SPINE_COLORS.length], tall: h % 5, wide: h % 4 };
+}
+export function usd(coins) {
+  const v = (Number(coins) || 0) / COINS_PER_DOLLAR;
+  return '$' + (Number.isInteger(v) ? v : v.toFixed(2));
+}
+
 export function fmtDuration(min) {
   min = Math.round(min || 0);
   const h = Math.floor(min / 60);

@@ -18,9 +18,11 @@ const balance = (memberId) =>
 const publicMember = (m) => ({
   id: m.id, name: m.name, initials: m.initials, color: m.color,
   monthlyGoalMinutes: m.monthly_goal_minutes, role: m.role,
+  theme: m.theme || 'classic', emblem: m.emblem || '', mascot: m.mascot || 'wizard',
 });
 
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
+const nowStr = () => new Date().toISOString().slice(0, 19).replace('T', ' '); // matches SQLite datetime('now')
 const safeParse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 
 const MEMBER_COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
@@ -147,6 +149,11 @@ const rowToSession = (r) => ({
   quote: r.quote, coins: r.coins, multiplier: r.multiplier, createdAt: r.created_at,
 });
 
+const rowToBook = (b) => ({
+  id: b.id, memberId: b.member_id, title: b.title, author: b.author, status: b.status,
+  rating: b.rating, startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
+});
+
 const periodKeyFor = (quest) => (quest.period === 'month' ? monthKey() : 'once');
 
 function questProgress(quest, memberId) {
@@ -222,7 +229,7 @@ function computeBadges(memberId, totals) {
     { id: 'streak', name: 'On fire', icon: 'ti-flame', desc: 'A 7-day streak', earned: streak >= 7 },
     { id: 'quests', name: 'Quest hunter', icon: 'ti-wand', desc: 'Finish 5 quests', earned: questsDone >= 5 },
     { id: 'spender', name: 'Treat yourself', icon: 'ti-gift', desc: 'Redeem a reward', earned: redeemed >= 1 },
-    { id: 'rich', name: 'Coin hoard', icon: 'ti-coins', desc: 'Earn 500 coins', earned: earned >= 500 },
+    { id: 'rich', name: 'Coin hoard', icon: 'ti-coins', desc: 'Earn 1,000 coins', earned: earned >= 1000 },
   ];
 }
 
@@ -308,6 +315,52 @@ api.get('/me/sessions', (c) => {
   return c.json(db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 50').all(m.id).map(rowToSession));
 });
 
+// ---- personal bookshelf ----
+const BOOK_STATUSES = ['want', 'reading', 'finished'];
+
+api.get('/me/books', (c) => {
+  const m = c.get('member');
+  const rows = db.prepare('SELECT * FROM member_books WHERE member_id = ? ORDER BY COALESCE(finished_at, started_at, created_at) DESC, id DESC').all(m.id);
+  return c.json(rows.map(rowToBook));
+});
+
+api.post('/me/books', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const title = (b.title || '').trim();
+  if (!title) return c.json({ error: 'Title required' }, 400);
+  const status = BOOK_STATUSES.includes(b.status) ? b.status : 'reading';
+  const now = nowStr();
+  const info = db.prepare('INSERT INTO member_books (member_id, title, author, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(m.id, title, (b.author || '').trim(), status,
+         status === 'want' ? null : now, status === 'finished' ? now : null);
+  return c.json(rowToBook(db.prepare('SELECT * FROM member_books WHERE id = ?').get(Number(info.lastInsertRowid))));
+});
+
+api.patch('/me/books/:id', async (c) => {
+  const m = c.get('member');
+  const id = Number(c.req.param('id'));
+  const bk = db.prepare('SELECT * FROM member_books WHERE id = ? AND member_id = ?').get(id, m.id);
+  if (!bk) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const title = b.title != null && String(b.title).trim() ? String(b.title).trim() : bk.title;
+  const author = b.author != null ? String(b.author).trim() : bk.author;
+  const status = BOOK_STATUSES.includes(b.status) ? b.status : bk.status;
+  const rating = b.rating != null ? (b.rating ? Math.max(1, Math.min(5, Math.round(Number(b.rating)))) : null) : bk.rating;
+  // stamp transitions: first time it starts / finishes
+  const startedAt = bk.started_at || (status !== 'want' ? nowStr() : null);
+  const finishedAt = status === 'finished' ? (bk.finished_at || nowStr()) : null;
+  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, started_at = ?, finished_at = ? WHERE id = ?')
+    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), startedAt, finishedAt, id);
+  return c.json(rowToBook(db.prepare('SELECT * FROM member_books WHERE id = ?').get(id)));
+});
+
+api.delete('/me/books/:id', (c) => {
+  const m = c.get('member');
+  db.prepare('DELETE FROM member_books WHERE id = ? AND member_id = ?').run(Number(c.req.param('id')), m.id);
+  return c.body(null, 204);
+});
+
 api.get('/leaderboard', (c) => {
   const period = c.req.query('period') === 'all' ? 'all' : 'month';
   const monthFilter = period === 'month' ? "AND strftime('%Y-%m', s.created_at) = ?" : '';
@@ -332,7 +385,14 @@ api.get('/profile/:id', (c) => {
   const byMedium = db.prepare('SELECT medium, SUM(minutes) AS minutes FROM sessions WHERE member_id = ? GROUP BY medium ORDER BY minutes DESC').all(id);
   const monthMinutes = db.prepare("SELECT COALESCE(SUM(minutes),0) AS minutes FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?").get(id, monthKey()).minutes;
   const recent = db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 20').all(id).map(rowToSession);
-  return c.json({ member: publicMember(m), balance: balance(id), totals, byMedium, monthMinutes, recent, badges: computeBadges(id, totals) });
+  const shelf = {
+    reading: db.prepare("SELECT * FROM member_books WHERE member_id = ? AND status = 'reading' ORDER BY COALESCE(started_at, created_at) DESC, id DESC").all(id).map(rowToBook),
+    finishedRecent: db.prepare("SELECT * FROM member_books WHERE member_id = ? AND status = 'finished' ORDER BY COALESCE(finished_at, created_at) DESC, id DESC LIMIT 18").all(id).map(rowToBook),
+    finishedTotal: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'finished'").get(id).n,
+    finishedThisYear: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'finished' AND strftime('%Y', COALESCE(finished_at, created_at)) = strftime('%Y','now')").get(id).n,
+    wantTotal: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'want'").get(id).n,
+  };
+  return c.json({ member: publicMember(m), balance: balance(id), totals, byMedium, monthMinutes, recent, shelf, badges: computeBadges(id, totals) });
 });
 
 api.post('/me/goal', async (c) => {
@@ -341,6 +401,20 @@ api.post('/me/goal', async (c) => {
   const minutes = Math.max(30, Math.min(6000, Math.round(Number(b.minutes) || 0)));
   db.prepare('UPDATE members SET monthly_goal_minutes = ? WHERE id = ?').run(minutes, m.id);
   return c.json({ monthlyGoalMinutes: minutes });
+});
+
+// free personalization — members style their own profile/app (not a coin sink)
+const THEMES = ['classic', 'rose', 'plum', 'ocean', 'forest', 'evening'];
+const MASCOTS = ['wizard', 'owl', 'fox', 'cat'];
+api.post('/me/appearance', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const theme = THEMES.includes(b.theme) ? b.theme : m.theme;
+  const mascot = MASCOTS.includes(b.mascot) ? b.mascot : m.mascot;
+  const emblem = b.emblem != null ? String(b.emblem).slice(0, 8) : m.emblem;
+  const color = b.color != null && /^#[0-9a-fA-F]{6}$/.test(b.color) ? b.color : m.color;
+  db.prepare('UPDATE members SET theme = ?, mascot = ?, emblem = ?, color = ? WHERE id = ?').run(theme, mascot, emblem, color, m.id);
+  return c.json(publicMember(db.prepare('SELECT * FROM members WHERE id = ?').get(m.id)));
 });
 
 api.get('/activity', (c) => {
@@ -486,6 +560,23 @@ api.post('/admin/quests', async (c) => {
   return c.json({ id: Number(info.lastInsertRowid) });
 });
 
+api.patch('/admin/quests/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const q = db.prepare('SELECT * FROM quests WHERE id = ?').get(id);
+  if (!q) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const title = b.title != null && String(b.title).trim() ? String(b.title).trim() : q.title;
+  const type = ['minutes', 'sessions', 'genres', 'mediums', 'streak', 'manual'].includes(b.type) ? b.type : q.type;
+  const period = b.period ? (b.period === 'once' ? 'once' : 'month') : q.period;
+  const target = b.target != null ? Math.max(1, Math.round(Number(b.target) || 1)) : q.target;
+  const coins = b.rewardCoins != null ? Math.max(0, Math.round(Number(b.rewardCoins) || 0)) : q.reward_coins;
+  const appr = b.requiresApproval != null ? (b.requiresApproval ? 1 : 0) : q.requires_approval;
+  const desc = b.description != null ? String(b.description) : q.description;
+  db.prepare('UPDATE quests SET title = ?, description = ?, type = ?, target = ?, reward_coins = ?, period = ?, requires_approval = ? WHERE id = ?')
+    .run(title, desc, type, target, coins, period, appr, id);
+  return c.json({ ok: true });
+});
+
 api.delete('/admin/quests/:id', (c) => {
   db.prepare('UPDATE quests SET active = 0 WHERE id = ?').run(Number(c.req.param('id')));
   return c.body(null, 204);
@@ -493,7 +584,7 @@ api.delete('/admin/quests/:id', (c) => {
 
 api.get('/admin/rewards', (c) =>
   c.json(db.prepare(`
-    SELECT r.id, r.name, r.cost_coins AS costCoins, r.tier, r.stock, r.status, r.owner_cut AS ownerCut, o.name AS ownerName
+    SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.status, r.owner_cut AS ownerCut, o.name AS ownerName
     FROM rewards r LEFT JOIN members o ON o.id = r.owner_id
     WHERE r.status NOT IN ('archived', 'denied')
     ORDER BY (r.status = 'pending') DESC, r.cost_coins`).all()));
@@ -512,6 +603,23 @@ api.post('/admin/rewards/:id/approve', async (c) => {
 api.post('/admin/rewards/:id/deny', (c) => {
   db.prepare("UPDATE rewards SET status = 'denied' WHERE id = ?").run(Number(c.req.param('id')));
   return c.body(null, 204);
+});
+
+api.patch('/admin/rewards/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(id);
+  if (!r) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const name = b.name != null && String(b.name).trim() ? String(b.name).trim() : r.name;
+  const desc = b.description != null ? String(b.description) : r.description;
+  const cost = b.costCoins != null ? Math.max(0, Math.round(Number(b.costCoins) || 0)) : r.cost_coins;
+  const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : r.tier;
+  const cut = b.ownerCut != null ? Math.max(0, Math.min(100, Math.round(Number(b.ownerCut) || 0))) : r.owner_cut;
+  let stock = r.stock;
+  if (b.stock !== undefined) stock = (b.stock === '' || b.stock == null) ? null : Math.max(0, Math.round(Number(b.stock) || 0));
+  db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, tier = ?, stock = ?, owner_cut = ? WHERE id = ?')
+    .run(name, desc, cost, tier, stock, cut, id);
+  return c.json({ ok: true });
 });
 
 api.delete('/admin/rewards/:id', (c) => {
@@ -631,6 +739,17 @@ api.post('/admin/lists', async (c) => {
   return c.json({ id: Number(info.lastInsertRowid) });
 });
 
+api.patch('/admin/lists/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const l = db.prepare('SELECT * FROM lists WHERE id = ?').get(id);
+  if (!l) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const name = b.name != null && String(b.name).trim() ? String(b.name).trim() : l.name;
+  const desc = b.description != null ? String(b.description) : l.description;
+  db.prepare('UPDATE lists SET name = ?, description = ? WHERE id = ?').run(name, desc, id);
+  return c.json({ ok: true });
+});
+
 api.delete('/admin/lists/:id', (c) => {
   const id = Number(c.req.param('id'));
   db.prepare('DELETE FROM list_books WHERE list_id = ?').run(id);
@@ -644,6 +763,17 @@ api.post('/admin/lists/:id/books', async (c) => {
   const info = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)')
     .run(Number(c.req.param('id')), b.title.trim(), b.author || '');
   return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.patch('/admin/lists/books/:bookId', async (c) => {
+  const id = Number(c.req.param('bookId'));
+  const bk = db.prepare('SELECT * FROM list_books WHERE id = ?').get(id);
+  if (!bk) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const title = b.title != null && String(b.title).trim() ? String(b.title).trim() : bk.title;
+  const author = b.author != null ? String(b.author) : bk.author;
+  db.prepare('UPDATE list_books SET title = ?, author = ? WHERE id = ?').run(title, author, id);
+  return c.json({ ok: true });
 });
 
 api.delete('/admin/lists/books/:bookId', (c) => {

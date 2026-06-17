@@ -44,6 +44,11 @@ jobs:
           pnpm exec cap add android
           pnpm exec cap sync android
 
+      # Launcher + adaptive icons and splash, from the committed PNGs in app/assets
+      - name: Apply app icon & splash
+        working-directory: app
+        run: npx -y @capacitor/assets@3 generate --android --assetPath assets
+
       # Allow plain-HTTP requests so the app can reach a NAS over the LAN
       - name: Allow cleartext HTTP
         run: sed -i 's/<application/<application android:usesCleartextTraffic="true"/' app/android/app/src/main/AndroidManifest.xml

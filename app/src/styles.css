@@ -19,6 +19,20 @@
   --chip-ink: #86735A;
 }
 
+/* ---------- free themes: shift the accent + a cozy evening (dark) mode ---------- */
+[data-theme="rose"]   { --terra: #D26A86; --terra-d: #8A3F58; --cream: #FCF1EF; --paper: #F2E1DE; }
+[data-theme="plum"]   { --terra: #9B72C7; --terra-d: #5E3F86; --cream: #F7F2FB; --paper: #E8DFF1; }
+[data-theme="ocean"]  { --terra: #4E93C2; --terra-d: #2E5C82; --cream: #EEF5FA; --paper: #DCE9F1; }
+[data-theme="forest"] { --terra: #5E9E63; --terra-d: #3A6B40; --cream: #F0F6EC; --paper: #DEEAD6; }
+[data-theme="evening"] {
+  --cream: #2B2723; --paper: #211D1A; --card: #332E28; --ink: #F1E8DA; --ink2: #A89A82;
+  --terra: #E78B6E; --terra-d: #F2B49C;
+  --sage: #9FB98C; --sage-bg: #37422D; --sage-d: #CFE0B7;
+  --gold: #E0A53C; --gold-bg: #473922; --gold-d: #EFC97E;
+  --blush-bg: #3F2C32; --blush-d: #E6AEBA;
+  --line: #403930; --chip: #3B342D; --chip-ink: #CBBBA0;
+}
+
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
 body {
@@ -116,6 +130,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 @keyframes hop { 0%, 100% { transform: translateY(0) rotate(-2deg); } 30% { transform: translateY(-13px) rotate(3deg); } 65% { transform: translateY(0) rotate(-1deg); } }
+@keyframes trick { 0% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-22px) rotate(0); } 72% { transform: translateY(-8px) rotate(360deg); } 100% { transform: translateY(0) rotate(360deg); } }
 @keyframes pop { 0% { transform: scale(.7); opacity: 0; } 60% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
 @keyframes flame { 0%, 100% { transform: scale(1) rotate(-4deg); } 50% { transform: scale(1.16) rotate(4deg); } }
 @keyframes barfill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
@@ -134,6 +149,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
 @media (prefers-reduced-motion: no-preference) {
   .mascot { animation: bob 3.6s ease-in-out infinite; transform-origin: center bottom; }
   .mascot.cheer { animation: hop .6s ease-in-out 2; }
+  .mascot.trick { animation: trick .75s ease; transform-origin: center center; }
   .stagger > * { animation: rise .45s ease both; }
   .stagger > *:nth-child(1) { animation-delay: .03s; }
   .stagger > *:nth-child(2) { animation-delay: .07s; }
