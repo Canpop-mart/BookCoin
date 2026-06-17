@@ -32,7 +32,7 @@ function cancel() { router.replace('/'); }
     <input v-model="title" placeholder="what are you reading? (optional)" style="text-align:center;margin-top:8px;" />
 
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
-      <MascotBird :size="100" eyes="happy" />
+      <Mascot :size="100" eyes="happy" />
       <div style="font-size:54px;font-weight:700;font-family:'Quicksand';color:var(--ink);">{{ fmtClock(seconds) }}</div>
       <div class="sub">
         <i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i>

@@ -51,7 +51,7 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
     </div>
 
     <div class="card row" style="background:var(--sage-bg);border-color:transparent;gap:12px;">
-      <MascotBird :size="66" eyes="happy" />
+      <Mascot :size="66" eyes="happy" />
       <div style="flex:1;">
         <div style="font-weight:600;font-size:16px;">Hey {{ store.member.name }}!</div>
         <div class="sub" style="color:var(--sage-d);margin-top:2px;">

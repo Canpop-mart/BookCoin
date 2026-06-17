@@ -101,7 +101,7 @@ async function save() {
   </div>
 
   <div v-else class="screen full" style="text-align:center;justify-content:center;align-items:center;gap:16px;">
-    <MascotBird :size="112" eyes="happy" />
+    <Mascot :size="112" eyes="happy" />
     <div class="h" style="font-size:22px;">Nice reading!</div>
     <div class="card" style="background:var(--gold-bg);border-color:transparent;">
       <div style="font-size:34px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';"><i class="ti ti-coin" aria-hidden="true"></i> +{{ result.coins }}</div>

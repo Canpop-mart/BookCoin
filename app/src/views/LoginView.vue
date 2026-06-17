@@ -35,7 +35,7 @@ async function submit() {
 
 <template>
   <div class="screen full" style="justify-content:center;align-items:center;text-align:center;gap:12px;">
-    <MascotBird :size="96" />
+    <Mascot :size="96" />
     <h1 style="font-size:27px;">BookCoin</h1>
     <p class="sub" style="margin-top:-6px;">the family reading contest</p>
 
