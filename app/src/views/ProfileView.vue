@@ -8,14 +8,30 @@ import { fmtDuration, MEDIUMS } from '../data';
 const route = useRoute();
 const router = useRouter();
 const data = ref(null);
+const goalHours = ref(15);
+const savingGoal = ref(false);
 const id = computed(() => Number(route.params.id) || store.member.id);
 
-async function load() { data.value = await api.profile(id.value); }
+async function load() {
+  data.value = await api.profile(id.value);
+  goalHours.value = Math.round((data.value.member.monthlyGoalMinutes / 60) * 2) / 2;
+}
 onMounted(load);
 watch(() => route.params.id, load);
 
 const isMe = computed(() => id.value === store.member.id);
 const mediumLabel = (m) => MEDIUMS.find((x) => x.id === m)?.label || m;
+const earnedCount = computed(() => (data.value?.badges || []).filter((b) => b.earned).length);
+
+async function saveGoal() {
+  savingGoal.value = true;
+  try {
+    await api.setGoal(Math.round(goalHours.value * 60));
+    await load();
+  } finally {
+    savingGoal.value = false;
+  }
+}
 
 async function logout() {
   try { await api.logout(); } catch {}
@@ -25,7 +41,7 @@ async function logout() {
 </script>
 
 <template>
-  <div class="screen" v-if="data">
+  <div class="screen stagger" v-if="data">
     <div class="row" style="gap:13px;">
       <span class="av" style="width:54px;height:54px;font-size:19px;" :style="{ background: data.member.color }">{{ data.member.initials }}</span>
       <div>
@@ -46,6 +62,32 @@ async function logout() {
       <div class="card" style="text-align:center;padding:14px 8px;">
         <div style="font-size:19px;font-weight:700;font-family:'Quicksand';">{{ data.totals.pages }}</div>
         <div class="sub">pages</div>
+      </div>
+    </div>
+
+    <div v-if="isMe" class="card row" style="justify-content:space-between;">
+      <div>
+        <div style="font-weight:600;font-size:14px;"><i class="ti ti-target" style="color:var(--terra);" aria-hidden="true"></i> Monthly goal</div>
+        <div class="sub">the target on the Ranks tab</div>
+      </div>
+      <div class="row" style="gap:6px;">
+        <input v-model.number="goalHours" type="number" min="0.5" step="0.5" style="width:64px;text-align:center;padding:9px;" aria-label="goal hours" />
+        <span class="sub">h</span>
+        <button class="chip" :disabled="savingGoal" @click="saveGoal" style="background:var(--sage-bg);color:var(--sage-d);"><i class="ti ti-check" aria-hidden="true"></i></button>
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:space-between;">
+      <span class="sub">badges</span>
+      <span class="sub">{{ earnedCount }} / {{ data.badges.length }}</span>
+    </div>
+    <div class="card" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+      <div v-for="b in data.badges" :key="b.id" style="text-align:center;" :style="{ opacity: b.earned ? 1 : .3 }" :title="b.desc">
+        <span class="av" style="width:46px;height:46px;margin:0 auto;"
+          :style="b.earned ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#EDE5D6', color: '#A99A85' }">
+          <i :class="['ti', b.icon]" style="font-size:22px;" aria-hidden="true"></i>
+        </span>
+        <div class="sub" style="margin-top:5px;font-size:11px;line-height:1.2;">{{ b.name }}</div>
       </div>
     </div>
 

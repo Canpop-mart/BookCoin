@@ -74,6 +74,40 @@ function questView(q, memberId) {
   };
 }
 
+function longestStreak(daysAsc) {
+  let best = 0, cur = 0, prev = null;
+  for (const d of daysAsc) {
+    cur = (prev && Date.parse(d) - Date.parse(prev) === 86400000) ? cur + 1 : 1;
+    if (cur > best) best = cur;
+    prev = d;
+  }
+  return best;
+}
+
+function computeBadges(memberId, totals) {
+  const genreRows = db.prepare('SELECT genres FROM sessions WHERE member_id = ?').all(memberId);
+  const genres = new Set();
+  for (const r of genreRows) for (const g of safeParse(r.genres)) genres.add(g);
+  const mediums = db.prepare('SELECT COUNT(DISTINCT medium) AS n FROM sessions WHERE member_id = ?').get(memberId).n;
+  const days = db.prepare('SELECT DISTINCT substr(created_at,1,10) AS d FROM sessions WHERE member_id = ? ORDER BY d').all(memberId).map((r) => r.d);
+  const streak = longestStreak(days);
+  const questsDone = db.prepare("SELECT COUNT(*) AS n FROM quest_claims WHERE member_id = ? AND status IN ('claimed','approved')").get(memberId).n;
+  const redeemed = db.prepare("SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND status != 'cancelled'").get(memberId).n;
+  const earned = db.prepare('SELECT COALESCE(SUM(amount),0) AS n FROM coin_txns WHERE member_id = ? AND amount > 0').get(memberId).n;
+  return [
+    { id: 'first', name: 'First steps', icon: 'ti-seedling', desc: 'Log your first reading', earned: totals.sessions >= 1 },
+    { id: 'bookworm', name: 'Bookworm', icon: 'ti-book', desc: 'Log 10 sessions', earned: totals.sessions >= 10 },
+    { id: 'marathon', name: 'Marathoner', icon: 'ti-run', desc: 'Read 10 hours total', earned: totals.minutes >= 600 },
+    { id: 'century', name: 'Century', icon: 'ti-stack', desc: 'Read 100 pages', earned: totals.pages >= 100 },
+    { id: 'explorer', name: 'Explorer', icon: 'ti-compass', desc: 'Read 5 genres', earned: genres.size >= 5 },
+    { id: 'omnivore', name: 'Omnivore', icon: 'ti-books', desc: 'Read 4 formats', earned: mediums >= 4 },
+    { id: 'streak', name: 'On fire', icon: 'ti-flame', desc: 'A 7-day streak', earned: streak >= 7 },
+    { id: 'quests', name: 'Quest hunter', icon: 'ti-wand', desc: 'Finish 5 quests', earned: questsDone >= 5 },
+    { id: 'spender', name: 'Treat yourself', icon: 'ti-gift', desc: 'Redeem a reward', earned: redeemed >= 1 },
+    { id: 'rich', name: 'Coin hoard', icon: 'ti-coins', desc: 'Earn 500 coins', earned: earned >= 500 },
+  ];
+}
+
 // ===================== api =====================
 const api = new Hono();
 
@@ -180,7 +214,24 @@ api.get('/profile/:id', (c) => {
   const byMedium = db.prepare('SELECT medium, SUM(minutes) AS minutes FROM sessions WHERE member_id = ? GROUP BY medium ORDER BY minutes DESC').all(id);
   const monthMinutes = db.prepare("SELECT COALESCE(SUM(minutes),0) AS minutes FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?").get(id, monthKey()).minutes;
   const recent = db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 20').all(id).map(rowToSession);
-  return c.json({ member: publicMember(m), balance: balance(id), totals, byMedium, monthMinutes, recent });
+  return c.json({ member: publicMember(m), balance: balance(id), totals, byMedium, monthMinutes, recent, badges: computeBadges(id, totals) });
+});
+
+api.post('/me/goal', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const minutes = Math.max(30, Math.min(6000, Math.round(Number(b.minutes) || 0)));
+  db.prepare('UPDATE members SET monthly_goal_minutes = ? WHERE id = ?').run(minutes, m.id);
+  return c.json({ monthlyGoalMinutes: minutes });
+});
+
+api.get('/activity', (c) => {
+  const rows = db.prepare(`
+    SELECT s.id, s.title, s.minutes, s.medium, s.created_at AS createdAt, s.genres,
+           m.name, m.initials, m.color
+    FROM sessions s JOIN members m ON m.id = s.member_id
+    ORDER BY s.id DESC LIMIT 10`).all();
+  return c.json(rows.map((r) => ({ ...r, genres: safeParse(r.genres) })));
 });
 
 // ---- quests ----
