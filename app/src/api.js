@@ -37,6 +37,10 @@ export const api = {
   myRedemptions: () => req('/me/redemptions'),
 
   admin: {
+    members: () => req('/admin/members'),
+    createMember: (b) => req('/admin/members', { method: 'POST', body: b }),
+    updateMember: (id, b) => req(`/admin/members/${id}`, { method: 'PATCH', body: b }),
+    deleteMember: (id) => req(`/admin/members/${id}`, { method: 'DELETE' }),
     quests: () => req('/admin/quests'),
     createQuest: (b) => req('/admin/quests', { method: 'POST', body: b }),
     deleteQuest: (id) => req(`/admin/quests/${id}`, { method: 'DELETE' }),
