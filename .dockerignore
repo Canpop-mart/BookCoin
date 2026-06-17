@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+data
+.git
+.github
+app/android
+*.apk
+*.keystore
+*.log
+.DS_Store
