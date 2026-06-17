@@ -25,18 +25,18 @@ function cancel() { router.replace('/'); }
   <div class="screen full" style="text-align:center;">
     <div class="row" style="justify-content:space-between;">
       <button class="chip" @click="cancel"><i class="ti ti-x" aria-hidden="true"></i></button>
-      <span class="sub"><i class="ti ti-mug" aria-hidden="true"></i> reading time</span>
+      <span class="sub"><i class="ti ti-book-2" aria-hidden="true"></i> Reading session</span>
       <span style="width:34px;"></span>
     </div>
 
-    <input v-model="title" placeholder="what are you reading? (optional)" style="text-align:center;margin-top:8px;" />
+    <input v-model="title" placeholder="What are you reading? (optional)" style="text-align:center;margin-top:8px;" />
 
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;">
       <Mascot :size="100" eyes="happy" />
       <div style="font-size:54px;font-weight:700;font-family:'Quicksand';color:var(--ink);">{{ fmtClock(seconds) }}</div>
       <div class="sub">
         <i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i>
-        {{ running ? 'keep going — every minute earns coins' : 'paused — tap resume to keep earning' }}
+        {{ running ? "You're earning coins as you read" : "Paused — resume when you're ready" }}
       </div>
     </div>
 

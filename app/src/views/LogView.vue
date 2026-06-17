@@ -28,7 +28,7 @@ function toggleGenre(g) {
 
 async function save() {
   error.value = '';
-  if (!summary.value.trim()) { error.value = 'Add a few words about what you read'; return; }
+  if (!summary.value.trim()) { error.value = 'Add a note about what you read'; return; }
   if (!minutes.value || minutes.value < 1) { error.value = 'How long did you read?'; return; }
   saving.value = true;
   try {
@@ -58,58 +58,58 @@ async function save() {
       <i class="ti ti-clock" style="font-size:22px;color:var(--sage-d);" aria-hidden="true"></i>
       <div>
         <div style="font-size:19px;font-weight:700;color:var(--sage-d);font-family:'Quicksand';">{{ fmtDuration(minutes) }}</div>
-        <div class="sub" style="color:var(--sage-d);">on the board</div>
+        <div class="sub" style="color:var(--sage-d);">Time read</div>
       </div>
       <input v-model.number="minutes" type="number" min="1" aria-label="minutes"
         style="width:78px;margin-left:auto;text-align:center;" />
     </div>
 
-    <input v-model="title" placeholder="title (optional)" />
-    <input v-model="author" placeholder="author (optional)" />
+    <input v-model="title" placeholder="Title (optional)" />
+    <input v-model="author" placeholder="Author (optional)" />
 
     <div>
-      <div class="sub" style="margin-bottom:7px;">format</div>
+      <div class="sub" style="margin-bottom:7px;">Format</div>
       <div style="display:flex;flex-wrap:wrap;gap:7px;">
         <button v-for="md in MEDIUMS" :key="md.id" class="chip" :class="{ on: medium === md.id }" @click="medium = md.id">{{ md.label }}</button>
       </div>
     </div>
 
     <div>
-      <div class="sub" style="margin-bottom:7px;">genre <span v-if="genres.length" style="color:var(--gold-d);">· new genre = bonus coins</span></div>
+      <div class="sub" style="margin-bottom:7px;">Genre <span v-if="genres.length" style="color:var(--gold-d);">· new genres earn a bonus</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px;">
         <button v-for="g in GENRES" :key="g" class="chip" :class="{ on: genres.includes(g) }" @click="toggleGenre(g)">{{ g }}</button>
       </div>
     </div>
 
     <div>
-      <div class="sub" style="margin-bottom:7px;">a few words</div>
-      <textarea v-model="summary" placeholder="what happened? what did you think?"></textarea>
+      <div class="sub" style="margin-bottom:7px;">Notes</div>
+      <textarea v-model="summary" placeholder="What happened? What did you think?"></textarea>
     </div>
 
     <div class="row" style="gap:8px;align-items:stretch;">
-      <input v-model="pages" type="number" min="0" placeholder="pages (optional)" />
-      <input v-model="quote" placeholder="quote (optional)" />
+      <input v-model="pages" type="number" min="0" placeholder="Pages (optional)" />
+      <input v-model="quote" placeholder="Quote (optional)" />
     </div>
 
     <div class="card row" style="background:var(--gold-bg);border-color:transparent;justify-content:space-between;">
-      <div class="sub" style="color:var(--gold-d);">+{{ estCoins }} coins · more for a new genre</div>
+      <div class="sub" style="color:var(--gold-d);">Earn ~{{ estCoins }} coins · new genres add a bonus</div>
       <i class="ti ti-coin" style="color:var(--gold);font-size:22px;" aria-hidden="true"></i>
     </div>
 
     <p v-if="error" class="sub" style="color:var(--terra-d);">{{ error }}</p>
-    <button class="btn" :disabled="saving" @click="save"><i class="ti ti-check" aria-hidden="true"></i> {{ saving ? 'Saving…' : 'Log it' }}</button>
+    <button class="btn" :disabled="saving" @click="save"><i class="ti ti-check" aria-hidden="true"></i> {{ saving ? 'Saving…' : 'Save session' }}</button>
   </div>
 
   <div v-else class="screen full" style="text-align:center;justify-content:center;align-items:center;gap:16px;">
     <CoinBurst />
     <Mascot :size="112" eyes="happy" mood="cheer" />
-    <div class="h" style="font-size:22px;">Nice reading!</div>
+    <div class="h" style="font-size:22px;">Session logged</div>
     <div class="card" style="background:var(--gold-bg);border-color:transparent;">
       <div style="font-size:34px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';"><i class="ti ti-coin" aria-hidden="true"></i> +{{ result.coins }}</div>
       <div v-if="result.isNewGenre" class="sub" style="color:var(--gold-d);margin-top:4px;">
         new-genre bonus ×{{ result.multiplier }} <i class="ti ti-sparkles" aria-hidden="true"></i>
       </div>
     </div>
-    <div class="sub">added to your coins</div>
+    <div class="sub">Added to your balance</div>
   </div>
 </template>
