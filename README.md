@@ -26,14 +26,21 @@ pnpm dev
 The Vite dev server proxies `/api` → `localhost:8787`, so just open **http://localhost:5173**.
 On first run the server seeds five family members with the default PIN **1234** (edit them later).
 
-## Build & self-host (NAS)
+## Self-host (NAS)
+
+The Docker image is built in CI and published to GHCR
+(`.github/workflows/docker.yml`), so the NAS just pulls and runs — no source or
+building required. Put `docker-compose.yml` in a folder and:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-This builds the web UI, bundles it with the server, and serves everything on port **8787**.
-The SQLite database lives in `./data` (mounted as a volume — back this folder up).
+The server listens on port **8787**; the SQLite database lives in the mounted
+`./data` subfolder (back this up). If the GHCR package is private, first run
+`docker login ghcr.io` once with a token that has `read:packages` — or make the
+package public so no login is needed.
 
 ## Android APK
 
