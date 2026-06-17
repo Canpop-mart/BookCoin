@@ -2,8 +2,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration } from '../data';
+import { fmtDuration, daysLeftInMonth } from '../data';
 
+const daysLeft = daysLeftInMonth();
 const period = ref('month');
 const data = ref(null);
 
@@ -21,7 +22,10 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
 
 <template>
   <div class="screen" v-if="data">
-    <div class="h"><i class="ti ti-trophy" style="color:var(--gold);" aria-hidden="true"></i> Leaderboard</div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="h"><i class="ti ti-trophy" style="color:var(--gold);" aria-hidden="true"></i> Leaderboard</div>
+      <span class="sub" v-if="period === 'month'"><i class="ti ti-clock" aria-hidden="true"></i> {{ daysLeft }}d left</span>
+    </div>
 
     <div class="row" style="gap:7px;">
       <button class="chip" :class="{ on: period === 'month' }" style="flex:1;justify-content:center;" @click="setPeriod('month')">This month</button>

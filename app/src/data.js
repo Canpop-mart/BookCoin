@@ -20,6 +20,18 @@ export function fmtDuration(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+export function daysLeftInMonth() {
+  const d = new Date();
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  return Math.max(0, lastDay - d.getDate());
+}
+
+export function monthName(ym) {
+  const [y, m] = (ym || '').split('-').map(Number);
+  if (!y) return '';
+  return new Date(y, m - 1, 1).toLocaleString('default', { month: 'long' });
+}
+
 export function fmtClock(totalSeconds) {
   const pad = (n) => String(n).padStart(2, '0');
   const s = totalSeconds % 60;

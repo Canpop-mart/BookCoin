@@ -114,6 +114,19 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS month_summaries (
+    month TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS ceremony_seen (
+    member_id INTEGER NOT NULL,
+    month TEXT NOT NULL,
+    PRIMARY KEY (member_id, month)
+  );
+`);
+
 // --- migration: add members.role to pre-existing databases ---
 const memberCols = db.prepare('PRAGMA table_info(members)').all().map((c) => c.name);
 if (!memberCols.includes('role')) {

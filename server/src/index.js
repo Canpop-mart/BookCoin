@@ -57,6 +57,70 @@ function doCancel(rdId, by) {
   return { code: 200, ok: true };
 }
 
+// --- month-end finalization: rank bonuses + secret bonus stars ---
+const RANK_BONUS = [300, 200, 100];
+const STAR_COINS = 100;
+const STAR_DEFS = [
+  { key: 'genres', label: 'Explorer', icon: 'ti-compass', desc: 'Most genres' },
+  { key: 'sessions', label: 'Bookworm', icon: 'ti-book', desc: 'Most sessions' },
+  { key: 'pages', label: 'Page-Turner', icon: 'ti-files', desc: 'Most pages' },
+  { key: 'days', label: 'Most consistent', icon: 'ti-flame', desc: 'Most days read' },
+  { key: 'formats', label: 'Omnivore', icon: 'ti-books', desc: 'Most formats' },
+];
+
+function finalizeMonth(month) {
+  const standings = db.prepare(`
+    SELECT m.id, m.name, m.initials, m.color,
+           COALESCE(SUM(s.minutes),0) AS minutes, COALESCE(SUM(s.pages),0) AS pages, COUNT(s.id) AS sessions
+    FROM members m JOIN sessions s ON s.member_id = m.id AND strftime('%Y-%m', s.created_at) = ?
+    GROUP BY m.id ORDER BY minutes DESC, sessions DESC`).all(month);
+
+  const rows = db.prepare("SELECT member_id, genres, medium, pages, substr(created_at,1,10) AS day FROM sessions WHERE strftime('%Y-%m', created_at) = ?").all(month);
+  const agg = {};
+  for (const r of rows) {
+    const a = (agg[r.member_id] ||= { genres: new Set(), formats: new Set(), pages: 0, sessions: 0, days: new Set() });
+    for (const g of safeParse(r.genres)) a.genres.add(g);
+    a.formats.add(r.medium);
+    a.pages += r.pages || 0;
+    a.sessions += 1;
+    a.days.add(r.day);
+  }
+  const valueOf = (a, key) => key === 'genres' ? a.genres.size : key === 'formats' ? a.formats.size
+    : key === 'days' ? a.days.size : key === 'pages' ? a.pages : a.sessions;
+  const info = (id) => db.prepare('SELECT name, initials, color FROM members WHERE id = ?').get(id);
+
+  const stars = STAR_DEFS.map((def) => {
+    let best = 0; let winners = [];
+    for (const [id, a] of Object.entries(agg)) {
+      const v = valueOf(a, def.key);
+      if (v > best) { best = v; winners = [Number(id)]; }
+      else if (v === best && v > 0) winners.push(Number(id));
+    }
+    return { ...def, value: best, winners: best > 0 ? winners.map((id) => ({ id, ...info(id) })) : [] };
+  });
+
+  const out = standings.map((s, i) => ({ ...s, rank: i + 1, bonus: i < 3 ? RANK_BONUS[i] : 0 }));
+  for (const s of out) if (s.bonus > 0) {
+    db.prepare("INSERT INTO coin_txns (member_id, amount, reason) VALUES (?, ?, 'rank-bonus')").run(s.id, s.bonus);
+  }
+  for (const st of stars) for (const w of st.winners) {
+    db.prepare("INSERT INTO coin_txns (member_id, amount, reason) VALUES (?, ?, 'star')").run(w.id, STAR_COINS);
+  }
+  db.prepare('INSERT INTO month_summaries (month, data) VALUES (?, ?)')
+    .run(month, JSON.stringify({ month, standings: out, stars, starCoins: STAR_COINS }));
+  console.log(`[bookcoin] finalized ${month}: ${out.length} readers, ${stars.filter((s) => s.winners.length).length} stars`);
+}
+
+function runFinalization() {
+  const current = monthKey();
+  const months = db.prepare("SELECT DISTINCT strftime('%Y-%m', created_at) AS m FROM sessions WHERE strftime('%Y-%m', created_at) < ? ORDER BY m").all(current).map((r) => r.m);
+  for (const m of months) {
+    if (!db.prepare('SELECT 1 FROM month_summaries WHERE month = ?').get(m)) {
+      try { finalizeMonth(m); } catch (e) { console.error('[bookcoin] finalize failed for', m, e); }
+    }
+  }
+}
+
 const rowToSession = (r) => ({
   id: r.id, memberId: r.member_id, title: r.title, author: r.author, medium: r.medium,
   genres: safeParse(r.genres), minutes: r.minutes, pages: r.pages, summary: r.summary,
@@ -567,6 +631,22 @@ api.delete('/admin/lists/books/:bookId', (c) => {
   return c.body(null, 204);
 });
 
+// ---- month-end ceremony ----
+api.get('/ceremony', (c) => {
+  const m = c.get('member');
+  const latest = db.prepare('SELECT month, data FROM month_summaries ORDER BY month DESC LIMIT 1').get();
+  if (!latest) return c.json({ summary: null });
+  const seen = !!db.prepare('SELECT 1 FROM ceremony_seen WHERE member_id = ? AND month = ?').get(m.id, latest.month);
+  return c.json({ summary: JSON.parse(latest.data), seen });
+});
+
+api.post('/ceremony/seen', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  if (b.month) db.prepare('INSERT OR IGNORE INTO ceremony_seen (member_id, month) VALUES (?, ?)').run(m.id, b.month);
+  return c.body(null, 204);
+});
+
 // unknown /api/* routes return JSON 404 (never fall through to the SPA shell,
 // so a stale server/app mismatch fails cleanly instead of returning HTML)
 api.all('*', (c) => c.json({ error: 'Unknown endpoint' }, 404));
@@ -581,6 +661,9 @@ if (existsSync(STATIC_ROOT)) {
   const indexHtml = existsSync(join(STATIC_ROOT, 'index.html')) ? readFileSync(join(STATIC_ROOT, 'index.html'), 'utf8') : null;
   app.get('*', (c) => (indexHtml ? c.html(indexHtml) : c.text('Not found', 404)));
 }
+
+runFinalization();
+setInterval(runFinalization, 60 * 60 * 1000); // hourly: finalize any month that has rolled over
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[bookcoin] server on http://localhost:${info.port}`);
