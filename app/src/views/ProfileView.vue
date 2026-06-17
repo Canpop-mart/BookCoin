@@ -30,7 +30,7 @@ async function logout() {
       <span class="av" style="width:54px;height:54px;font-size:19px;" :style="{ background: data.member.color }">{{ data.member.initials }}</span>
       <div>
         <div class="h" style="font-size:21px;">{{ data.member.name }}</div>
-        <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ data.balance }} coins in the jar</div>
+        <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ data.balance }} coins</div>
       </div>
     </div>
 
@@ -57,7 +57,7 @@ async function logout() {
     </div>
 
     <div class="sub" style="margin-top:2px;">reading log</div>
-    <div v-if="!data.recent.length" class="card sub">No reading logged yet — start a cozy session!</div>
+    <div v-if="!data.recent.length" class="card sub">Nothing logged yet — get on the board!</div>
     <div v-for="s in data.recent" :key="s.id" class="card">
       <div class="row" style="justify-content:space-between;">
         <span style="font-weight:600;">{{ s.title || 'Untitled' }}</span>
