@@ -70,6 +70,7 @@ async function logout() {
       <div v-if="s.quote" class="sub" style="font-style:italic;margin-top:5px;">“{{ s.quote }}”</div>
     </div>
 
-    <button v-if="isMe" class="btn soft" style="margin-top:8px;" @click="logout"><i class="ti ti-logout" aria-hidden="true"></i> Log out</button>
+    <button v-if="isMe && data.member.role === 'admin'" class="btn soft" style="margin-top:8px;" @click="router.push('/admin')"><i class="ti ti-settings" aria-hidden="true"></i> Admin</button>
+    <button v-if="isMe" class="btn soft" @click="logout"><i class="ti ti-logout" aria-hidden="true"></i> Log out</button>
   </div>
 </template>

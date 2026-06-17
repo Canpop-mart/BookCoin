@@ -26,4 +26,26 @@ export const api = {
   mySessions: () => req('/me/sessions'),
   leaderboard: (period) => req('/leaderboard?period=' + period),
   profile: (id) => req('/profile/' + id),
+
+  quests: () => req('/quests'),
+  claimQuest: (id) => req(`/quests/${id}/claim`, { method: 'POST' }),
+
+  rewards: () => req('/rewards'),
+  redeemReward: (id) => req(`/rewards/${id}/redeem`, { method: 'POST' }),
+  myRedemptions: () => req('/me/redemptions'),
+
+  admin: {
+    quests: () => req('/admin/quests'),
+    createQuest: (b) => req('/admin/quests', { method: 'POST', body: b }),
+    deleteQuest: (id) => req(`/admin/quests/${id}`, { method: 'DELETE' }),
+    rewards: () => req('/admin/rewards'),
+    createReward: (b) => req('/admin/rewards', { method: 'POST', body: b }),
+    deleteReward: (id) => req(`/admin/rewards/${id}`, { method: 'DELETE' }),
+    redemptions: () => req('/admin/redemptions'),
+    fulfill: (id) => req(`/admin/redemptions/${id}/fulfill`, { method: 'POST' }),
+    cancel: (id) => req(`/admin/redemptions/${id}/cancel`, { method: 'POST' }),
+    claims: () => req('/admin/quest-claims'),
+    approveClaim: (id) => req(`/admin/quest-claims/${id}/approve`, { method: 'POST' }),
+    rejectClaim: (id) => req(`/admin/quest-claims/${id}/reject`, { method: 'POST' }),
+  },
 };

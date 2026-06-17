@@ -16,11 +16,11 @@ const balance = (memberId) =>
   db.prepare('SELECT COALESCE(SUM(amount),0) AS bal FROM coin_txns WHERE member_id = ?').get(memberId).bal;
 
 const publicMember = (m) => ({
-  id: m.id, name: m.name, initials: m.initials, color: m.color, monthlyGoalMinutes: m.monthly_goal_minutes,
+  id: m.id, name: m.name, initials: m.initials, color: m.color,
+  monthlyGoalMinutes: m.monthly_goal_minutes, role: m.role,
 });
 
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
-
 const safeParse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 
 const rowToSession = (r) => ({
@@ -29,7 +29,52 @@ const rowToSession = (r) => ({
   quote: r.quote, coins: r.coins, multiplier: r.multiplier, createdAt: r.created_at,
 });
 
-// --- api ---
+const periodKeyFor = (quest) => (quest.period === 'month' ? monthKey() : 'once');
+
+function questProgress(quest, memberId) {
+  const monthly = quest.period === 'month';
+  const filter = monthly ? "AND strftime('%Y-%m', created_at) = ?" : '';
+  const args = monthly ? [memberId, monthKey()] : [memberId];
+  switch (quest.type) {
+    case 'minutes':
+      return db.prepare(`SELECT COALESCE(SUM(minutes),0) AS v FROM sessions WHERE member_id = ? ${filter}`).get(...args).v;
+    case 'sessions':
+      return db.prepare(`SELECT COUNT(*) AS v FROM sessions WHERE member_id = ? ${filter}`).get(...args).v;
+    case 'mediums':
+      return db.prepare(`SELECT COUNT(DISTINCT medium) AS v FROM sessions WHERE member_id = ? ${filter}`).get(...args).v;
+    case 'genres': {
+      const rows = db.prepare(`SELECT genres FROM sessions WHERE member_id = ? ${filter}`).all(...args);
+      const set = new Set();
+      for (const r of rows) for (const g of safeParse(r.genres)) set.add(g);
+      return set.size;
+    }
+    case 'streak': {
+      const rows = db.prepare('SELECT DISTINCT substr(created_at,1,10) AS d FROM sessions WHERE member_id = ?').all(memberId);
+      const days = new Set(rows.map((r) => r.d));
+      let n = 0;
+      const d = new Date();
+      while (days.has(d.toISOString().slice(0, 10))) { n++; d.setUTCDate(d.getUTCDate() - 1); }
+      return n;
+    }
+    default:
+      return 0; // manual: not auto-tracked
+  }
+}
+
+function questView(q, memberId) {
+  const pk = periodKeyFor(q);
+  const claim = db.prepare('SELECT * FROM quest_claims WHERE quest_id = ? AND member_id = ? AND period_key = ?').get(q.id, memberId, pk);
+  const progress = q.type === 'manual' ? (claim && claim.status !== 'rejected' ? q.target : 0) : questProgress(q, memberId);
+  return {
+    id: q.id, title: q.title, description: q.description, type: q.type, target: q.target,
+    rewardCoins: q.reward_coins, period: q.period, requiresApproval: !!q.requires_approval,
+    progress: Math.min(progress, q.target), rawProgress: progress,
+    complete: progress >= q.target,
+    claimStatus: claim ? claim.status : null,
+  };
+}
+
+// ===================== api =====================
 const api = new Hono();
 
 api.get('/health', (c) => c.json({ ok: true }));
@@ -46,7 +91,7 @@ api.post('/login', async (c) => {
   return c.json({ token, member: publicMember(m) });
 });
 
-// everything below requires a valid token
+// ---- auth gate ----
 api.use('*', async (c, next) => {
   const auth = c.req.header('Authorization') || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -55,6 +100,12 @@ api.use('*', async (c, next) => {
   if (!m) return c.json({ error: 'Unauthorized' }, 401);
   c.set('member', m);
   c.set('token', token);
+  await next();
+});
+
+// ---- admin gate (only /admin/*) ----
+api.use('/admin/*', async (c, next) => {
+  if (c.get('member').role !== 'admin') return c.json({ error: 'Admins only' }, 403);
   await next();
 });
 
@@ -79,7 +130,6 @@ api.post('/sessions', async (c) => {
   const medium = b.medium || 'prose';
   const genres = Array.isArray(b.genres) ? b.genres.filter(Boolean) : [];
 
-  // comfort-zone bonus: brand-new genre for this member (none of these genres seen before)
   const prior = db.prepare('SELECT genres FROM sessions WHERE member_id = ?').all(m.id);
   const seen = new Set();
   for (const r of prior) for (const g of safeParse(r.genres)) seen.add(g);
@@ -95,7 +145,6 @@ api.post('/sessions', async (c) => {
     b.pages != null && b.pages !== '' ? Math.round(Number(b.pages)) : null,
     summary, b.quote || null, coins, multiplier
   );
-
   db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
     .run(m.id, coins, 'base-earn', info.lastInsertRowid);
 
@@ -104,8 +153,7 @@ api.post('/sessions', async (c) => {
 
 api.get('/me/sessions', (c) => {
   const m = c.get('member');
-  const rows = db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 50').all(m.id);
-  return c.json(rows.map(rowToSession));
+  return c.json(db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 50').all(m.id).map(rowToSession));
 });
 
 api.get('/leaderboard', (c) => {
@@ -128,30 +176,176 @@ api.get('/profile/:id', (c) => {
   const id = Number(c.req.param('id'));
   const m = db.prepare('SELECT * FROM members WHERE id = ?').get(id);
   if (!m) return c.json({ error: 'Not found' }, 404);
-  const totals = db.prepare(
-    'SELECT COALESCE(SUM(minutes),0) AS minutes, COUNT(*) AS sessions, COALESCE(SUM(pages),0) AS pages FROM sessions WHERE member_id = ?'
-  ).get(id);
-  const byMedium = db.prepare(
-    'SELECT medium, SUM(minutes) AS minutes FROM sessions WHERE member_id = ? GROUP BY medium ORDER BY minutes DESC'
-  ).all(id);
-  const monthMinutes = db.prepare(
-    "SELECT COALESCE(SUM(minutes),0) AS minutes FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?"
-  ).get(id, monthKey()).minutes;
+  const totals = db.prepare('SELECT COALESCE(SUM(minutes),0) AS minutes, COUNT(*) AS sessions, COALESCE(SUM(pages),0) AS pages FROM sessions WHERE member_id = ?').get(id);
+  const byMedium = db.prepare('SELECT medium, SUM(minutes) AS minutes FROM sessions WHERE member_id = ? GROUP BY medium ORDER BY minutes DESC').all(id);
+  const monthMinutes = db.prepare("SELECT COALESCE(SUM(minutes),0) AS minutes FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?").get(id, monthKey()).minutes;
   const recent = db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 20').all(id).map(rowToSession);
   return c.json({ member: publicMember(m), balance: balance(id), totals, byMedium, monthMinutes, recent });
 });
 
-// --- app wiring ---
+// ---- quests ----
+api.get('/quests', (c) => {
+  const m = c.get('member');
+  const quests = db.prepare('SELECT * FROM quests WHERE active = 1 ORDER BY id').all();
+  return c.json(quests.map((q) => questView(q, m.id)));
+});
+
+api.post('/quests/:id/claim', (c) => {
+  const m = c.get('member');
+  const q = db.prepare('SELECT * FROM quests WHERE id = ? AND active = 1').get(Number(c.req.param('id')));
+  if (!q) return c.json({ error: 'Quest not found' }, 404);
+  const pk = periodKeyFor(q);
+  const existing = db.prepare('SELECT * FROM quest_claims WHERE quest_id = ? AND member_id = ? AND period_key = ?').get(q.id, m.id, pk);
+  if (existing && existing.status !== 'rejected') return c.json({ error: 'Already claimed this period' }, 400);
+  if (existing) db.prepare('DELETE FROM quest_claims WHERE id = ?').run(existing.id);
+
+  const manualPending = q.type === 'manual' && q.requires_approval;
+  if (!manualPending && q.type !== 'manual') {
+    const prog = questProgress(q, m.id);
+    if (prog < q.target) return c.json({ error: 'Not finished yet' }, 400);
+  }
+
+  if (manualPending) {
+    db.prepare('INSERT INTO quest_claims (quest_id, member_id, period_key, status, coins_awarded) VALUES (?, ?, ?, ?, 0)')
+      .run(q.id, m.id, pk, 'pending');
+    return c.json({ status: 'pending' });
+  }
+  db.prepare('INSERT INTO quest_claims (quest_id, member_id, period_key, status, coins_awarded) VALUES (?, ?, ?, ?, ?)')
+    .run(q.id, m.id, pk, 'claimed', q.reward_coins);
+  db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
+    .run(m.id, q.reward_coins, 'quest', q.id);
+  return c.json({ status: 'claimed', coins: q.reward_coins, balance: balance(m.id) });
+});
+
+// ---- rewards / shop ----
+api.get('/rewards', (c) => {
+  const m = c.get('member');
+  const rewards = db.prepare('SELECT * FROM rewards WHERE active = 1 ORDER BY cost_coins').all().map((r) => ({
+    id: r.id, name: r.name, description: r.description, costCoins: r.cost_coins, tier: r.tier, stock: r.stock,
+  }));
+  return c.json({ balance: balance(m.id), rewards });
+});
+
+api.post('/rewards/:id/redeem', (c) => {
+  const m = c.get('member');
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ? AND active = 1').get(Number(c.req.param('id')));
+  if (!r) return c.json({ error: 'Reward not found' }, 404);
+  if (balance(m.id) < r.cost_coins) return c.json({ error: 'Not enough coins yet' }, 400);
+  if (r.stock != null && r.stock <= 0) return c.json({ error: 'Out of stock' }, 400);
+
+  const info = db.prepare('INSERT INTO redemptions (reward_id, member_id, cost_coins, status) VALUES (?, ?, ?, ?)')
+    .run(r.id, m.id, r.cost_coins, 'requested');
+  db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
+    .run(m.id, -r.cost_coins, 'spend', Number(info.lastInsertRowid));
+  if (r.stock != null) db.prepare('UPDATE rewards SET stock = stock - 1 WHERE id = ?').run(r.id);
+  return c.json({ status: 'requested', balance: balance(m.id) });
+});
+
+api.get('/me/redemptions', (c) => {
+  const m = c.get('member');
+  const rows = db.prepare(`
+    SELECT rd.id, rd.cost_coins AS costCoins, rd.status, rd.created_at AS createdAt, r.name
+    FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id
+    WHERE rd.member_id = ? ORDER BY rd.id DESC LIMIT 30`).all(m.id);
+  return c.json(rows);
+});
+
+// ===================== admin =====================
+api.get('/admin/quests', (c) =>
+  c.json(db.prepare('SELECT * FROM quests ORDER BY active DESC, id DESC').all()));
+
+api.post('/admin/quests', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.title) return c.json({ error: 'Title required' }, 400);
+  const type = ['minutes', 'sessions', 'genres', 'mediums', 'streak', 'manual'].includes(b.type) ? b.type : 'manual';
+  const period = b.period === 'once' ? 'once' : 'month';
+  const info = db.prepare(
+    'INSERT INTO quests (title, description, type, target, reward_coins, period, requires_approval, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(b.title, b.description || '', type, Math.max(1, Math.round(Number(b.target) || 1)),
+        Math.max(0, Math.round(Number(b.rewardCoins) || 0)), period, b.requiresApproval ? 1 : 0, m.id);
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.delete('/admin/quests/:id', (c) => {
+  db.prepare('UPDATE quests SET active = 0 WHERE id = ?').run(Number(c.req.param('id')));
+  return c.body(null, 204);
+});
+
+api.get('/admin/rewards', (c) =>
+  c.json(db.prepare('SELECT * FROM rewards ORDER BY active DESC, cost_coins').all()));
+
+api.post('/admin/rewards', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  if (!b.name) return c.json({ error: 'Name required' }, 400);
+  const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : 'low';
+  const stock = b.stock === '' || b.stock == null ? null : Math.max(0, Math.round(Number(b.stock)));
+  const info = db.prepare('INSERT INTO rewards (name, description, cost_coins, tier, stock) VALUES (?, ?, ?, ?, ?)')
+    .run(b.name, b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock);
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.delete('/admin/rewards/:id', (c) => {
+  db.prepare('UPDATE rewards SET active = 0 WHERE id = ?').run(Number(c.req.param('id')));
+  return c.body(null, 204);
+});
+
+api.get('/admin/redemptions', (c) => {
+  const rows = db.prepare(`
+    SELECT rd.id, rd.cost_coins AS costCoins, rd.status, rd.created_at AS createdAt,
+           r.name, m.name AS member, m.initials, m.color
+    FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id JOIN members m ON m.id = rd.member_id
+    ORDER BY (rd.status = 'requested') DESC, rd.id DESC LIMIT 60`).all();
+  return c.json(rows);
+});
+
+api.post('/admin/redemptions/:id/fulfill', (c) => {
+  db.prepare("UPDATE redemptions SET status = 'fulfilled' WHERE id = ? AND status = 'requested'").run(Number(c.req.param('id')));
+  return c.body(null, 204);
+});
+
+api.post('/admin/redemptions/:id/cancel', (c) => {
+  const rd = db.prepare("SELECT * FROM redemptions WHERE id = ? AND status = 'requested'").get(Number(c.req.param('id')));
+  if (!rd) return c.json({ error: 'Not cancellable' }, 400);
+  db.prepare("UPDATE redemptions SET status = 'cancelled' WHERE id = ?").run(rd.id);
+  db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
+    .run(rd.member_id, rd.cost_coins, 'refund', rd.id);
+  db.prepare('UPDATE rewards SET stock = stock + 1 WHERE id = ? AND stock IS NOT NULL').run(rd.reward_id);
+  return c.body(null, 204);
+});
+
+api.get('/admin/quest-claims', (c) => {
+  const rows = db.prepare(`
+    SELECT qc.id, qc.status, qc.created_at AS createdAt, q.title, q.reward_coins AS rewardCoins,
+           m.name AS member, m.initials, m.color
+    FROM quest_claims qc JOIN quests q ON q.id = qc.quest_id JOIN members m ON m.id = qc.member_id
+    WHERE qc.status = 'pending' ORDER BY qc.id DESC`).all();
+  return c.json(rows);
+});
+
+api.post('/admin/quest-claims/:id/approve', (c) => {
+  const qc = db.prepare("SELECT * FROM quest_claims WHERE id = ? AND status = 'pending'").get(Number(c.req.param('id')));
+  if (!qc) return c.json({ error: 'Not pending' }, 400);
+  const q = db.prepare('SELECT * FROM quests WHERE id = ?').get(qc.quest_id);
+  db.prepare("UPDATE quest_claims SET status = 'approved', coins_awarded = ? WHERE id = ?").run(q.reward_coins, qc.id);
+  db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
+    .run(qc.member_id, q.reward_coins, 'quest', q.id);
+  return c.body(null, 204);
+});
+
+api.post('/admin/quest-claims/:id/reject', (c) => {
+  db.prepare("UPDATE quest_claims SET status = 'rejected' WHERE id = ? AND status = 'pending'").run(Number(c.req.param('id')));
+  return c.body(null, 204);
+});
+
+// ===================== app wiring =====================
 const app = new Hono();
 app.use('*', cors());
 app.route('/api', api);
 
-// Serve the built web UI (production). In dev, use the Vite dev server instead.
 if (existsSync(STATIC_ROOT)) {
   app.use('/*', serveStatic({ root: STATIC_ROOT }));
-  const indexHtml = existsSync(join(STATIC_ROOT, 'index.html'))
-    ? readFileSync(join(STATIC_ROOT, 'index.html'), 'utf8')
-    : null;
+  const indexHtml = existsSync(join(STATIC_ROOT, 'index.html')) ? readFileSync(join(STATIC_ROOT, 'index.html'), 'utf8') : null;
   app.get('*', (c) => (indexHtml ? c.html(indexHtml) : c.text('Not found', 404)));
 }
 
