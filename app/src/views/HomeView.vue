@@ -106,7 +106,7 @@ function ago(ts) {
         <span class="sub">My shelf <i class="ti ti-chevron-right" aria-hidden="true"></i></span>
       </div>
       <div v-for="b in reading.slice(0, 2)" :key="b.id" class="row" style="gap:10px;width:100%;">
-        <span class="av" style="width:30px;height:30px;font-size:13px;background:#EFE0F0;color:#6E5E94;flex-shrink:0;"><i class="ti ti-book" aria-hidden="true"></i></span>
+        <span class="av" style="width:30px;height:30px;font-size:15px;background:#EFE0F0;color:#6E5E94;flex-shrink:0;"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-book" aria-hidden="true"></i></span>
         <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div><div class="sub" v-if="b.author">{{ b.author }}</div></div>
       </div>
       <div v-if="!reading.length" class="sub">Add what you're reading to track it →</div>

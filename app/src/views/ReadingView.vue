@@ -20,10 +20,10 @@ const title = computed({ get: () => store.timer?.title || '', set: (v) => store.
 
 function toggle() { running.value ? store.pauseTimer() : store.resumeTimer(); }
 function finish() {
-  const minutes = Math.max(1, Math.round(store.elapsedMs() / 60000));
+  const seconds = Math.max(1, Math.round(store.elapsedMs() / 1000));
   const t = store.timer?.title || '';
   store.clearTimer();
-  store.draft = { minutes, title: t };
+  store.draft = { seconds, title: t };
   router.replace('/log');
 }
 function cancel() { store.clearTimer(); router.replace('/'); }
