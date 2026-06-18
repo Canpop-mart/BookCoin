@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bookcoin-app",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["-C", "app", "dev"],
+      "port": 5173,
+      "autoPort": false
+    }
+  ]
+}

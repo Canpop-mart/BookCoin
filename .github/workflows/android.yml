@@ -53,14 +53,45 @@ jobs:
       - name: Allow cleartext HTTP
         run: sed -i 's/<application/<application android:usesCleartextTraffic="true"/' app/android/app/src/main/AndroidManifest.xml
 
+      # Sign the release on v* tags only when a keystore secret is configured;
+      # otherwise fall back to a debug build so releases never break.
+      - name: Decide signing
+        id: signing
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build signed release APK
+        if: steps.signing.outputs.sign == 'true'
+        working-directory: app/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)"
+          "$BT/zipalign" -p -f 4 app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
+          "$BT/apksigner" sign --ks release.keystore \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" --key-pass "pass:$KEY_PASSWORD" \
+            --ks-key-alias "$KEY_ALIAS" --out "$GITHUB_WORKSPACE/bookcoin.apk" aligned.apk
+          rm -f release.keystore
+
       - name: Build debug APK
+        if: steps.signing.outputs.sign != 'true'
         working-directory: app/android
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
-
-      - name: Rename APK
-        run: cp app/android/app/build/outputs/apk/debug/app-debug.apk bookcoin.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/bookcoin.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
