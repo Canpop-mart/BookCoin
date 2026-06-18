@@ -138,6 +138,14 @@ db.exec(`
     finished_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- admin-managed genre list (offered when logging a session)
+  CREATE TABLE IF NOT EXISTS genres (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    sort INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // --- migration: add members.role to pre-existing databases ---
@@ -278,6 +286,23 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'seed_extra_1'").get()) {
 
   db.prepare("INSERT INTO meta (key, value) VALUES ('seed_extra_1', '1')").run();
   console.log('[bookcoin] seeded 8 challenges + 6 reading lists');
+}
+
+// --- seed the admin-managed genre list (once; admins edit it afterwards) ---
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'genres_seeded'").get()) {
+  const ins = db.prepare('INSERT OR IGNORE INTO genres (name, sort) VALUES (?, ?)');
+  [
+    'Fantasy', 'Sci-fi', 'Dystopian', 'Adventure', 'Action',
+    'Mystery', 'Thriller', 'Crime', 'Horror', 'Paranormal',
+    'Romance', 'Drama', 'Slice of life', 'Comedy', 'Coming of age',
+    'Literary', 'Contemporary', 'Historical', 'Classic', 'Fairy tale',
+    'Western', 'Sports', 'Short stories', 'Poetry',
+    'Young adult', "Children's", 'Middle grade',
+    'Nonfiction', 'Biography', 'Memoir', 'History', 'Science',
+    'True crime', 'Self-help', 'Philosophy', 'Travel',
+  ].forEach((name, i) => ins.run(name, i));
+  db.prepare("INSERT INTO meta (key, value) VALUES ('genres_seeded', '1')").run();
+  console.log('[bookcoin] seeded the genre list');
 }
 
 // --- economy v2: conscious money anchor (100 coins = $1) — re-price the default

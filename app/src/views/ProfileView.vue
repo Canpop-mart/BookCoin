@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
 import { fmtDuration, MEDIUMS, bookSpine } from '../data';
+import pkg from '../../package.json';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,6 +23,7 @@ watch(() => route.params.id, load);
 const isMe = computed(() => id.value === store.member.id);
 const mediumLabel = (m) => MEDIUMS.find((x) => x.id === m)?.label || m;
 const year = new Date().getFullYear();
+const version = pkg.version;
 const maxMedium = computed(() => Math.max(1, ...(data.value?.byMedium || []).map((b) => b.minutes)));
 const logTitle = (s) => s.title || (mediumLabel(s.medium) + ' session');
 const logMeta = (s) => [fmtDuration(s.minutes), s.title ? mediumLabel(s.medium) : null, s.genres?.length ? s.genres.join(', ') : null].filter(Boolean).join(' · ');
@@ -232,6 +234,7 @@ async function logout() {
 
     <button v-if="isMe && data.member.role === 'admin'" class="btn soft" style="margin-top:8px;" @click="router.push('/admin')"><i class="ti ti-settings" aria-hidden="true"></i> Admin</button>
     <button v-if="isMe" class="btn soft" @click="logout"><i class="ti ti-logout" aria-hidden="true"></i> Log out</button>
+    <div class="sub" style="text-align:center;font-size:11px;opacity:.6;margin-top:6px;">BookCoin v{{ version }}</div>
   </div>
 </template>
 

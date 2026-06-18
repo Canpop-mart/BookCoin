@@ -7,9 +7,14 @@ export const MEDIUMS = [
 ];
 
 export const GENRES = [
-  'Fantasy', 'Sci-fi', 'Romance', 'Mystery', 'Thriller', 'Horror',
-  'Nonfiction', 'History', 'Biography', 'Poetry', 'Self-help',
-  'Classic', 'Young adult', 'Adventure', 'Comedy',
+  'Fantasy', 'Sci-fi', 'Dystopian', 'Adventure', 'Action',
+  'Mystery', 'Thriller', 'Crime', 'Horror', 'Paranormal',
+  'Romance', 'Drama', 'Slice of life', 'Comedy', 'Coming of age',
+  'Literary', 'Contemporary', 'Historical', 'Classic', 'Fairy tale',
+  'Western', 'Sports', 'Short stories', 'Poetry',
+  'Young adult', "Children's", 'Middle grade',
+  'Nonfiction', 'Biography', 'Memoir', 'History', 'Science',
+  'True crime', 'Self-help', 'Philosophy', 'Travel',
 ];
 
 // conscious money anchor: 100 coins = $1 (keep in sync with server/src/coins.js)

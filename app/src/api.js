@@ -50,6 +50,7 @@ export const api = {
   fulfillRedemption: (id) => req(`/redemptions/${id}/fulfill`, { method: 'POST' }),
   cancelRedemption: (id) => req(`/redemptions/${id}/cancel`, { method: 'POST' }),
   lists: () => req('/lists'),
+  genres: () => req('/genres'),
 
   admin: {
     members: () => req('/admin/members'),
@@ -75,5 +76,8 @@ export const api = {
     addBook: (listId, b) => req(`/admin/lists/${listId}/books`, { method: 'POST', body: b }),
     updateBook: (bookId, b) => req(`/admin/lists/books/${bookId}`, { method: 'PATCH', body: b }),
     deleteBook: (bookId) => req(`/admin/lists/books/${bookId}`, { method: 'DELETE' }),
+    genres: () => req('/admin/genres'),
+    createGenre: (b) => req('/admin/genres', { method: 'POST', body: b }),
+    deleteGenre: (id) => req(`/admin/genres/${id}`, { method: 'DELETE' }),
   },
 };
