@@ -435,6 +435,10 @@ api.get('/activity', (c) => {
   return c.json(rows.map((r) => ({ ...r, genres: safeParse(r.genres) })));
 });
 
+// genres offered when logging (admin-managed list)
+api.get('/genres', (c) =>
+  c.json(db.prepare('SELECT name FROM genres ORDER BY sort, name').all().map((r) => r.name)));
+
 // ---- quests ----
 api.get('/quests', (c) => {
   const m = c.get('member');
@@ -787,6 +791,28 @@ api.patch('/admin/lists/books/:bookId', async (c) => {
 
 api.delete('/admin/lists/books/:bookId', (c) => {
   db.prepare('DELETE FROM list_books WHERE id = ?').run(Number(c.req.param('bookId')));
+  return c.body(null, 204);
+});
+
+// ---- admin: genres ----
+api.get('/admin/genres', (c) =>
+  c.json(db.prepare('SELECT id, name FROM genres ORDER BY sort, name').all()));
+
+api.post('/admin/genres', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const name = (b.name || '').trim();
+  if (!name) return c.json({ error: 'Name required' }, 400);
+  const maxSort = db.prepare('SELECT COALESCE(MAX(sort), 0) AS m FROM genres').get().m;
+  try {
+    const info = db.prepare('INSERT INTO genres (name, sort) VALUES (?, ?)').run(name, maxSort + 1);
+    return c.json({ id: Number(info.lastInsertRowid) });
+  } catch {
+    return c.json({ error: 'That genre already exists' }, 400);
+  }
+});
+
+api.delete('/admin/genres/:id', (c) => {
+  db.prepare('DELETE FROM genres WHERE id = ?').run(Number(c.req.param('id')));
   return c.body(null, 204);
 });
 

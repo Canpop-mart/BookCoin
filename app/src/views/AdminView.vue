@@ -16,6 +16,7 @@ const rewards = ref([]);
 const redemptions = ref([]);
 const claims = ref([]);
 const lists = ref([]);
+const genres = ref([]);
 
 const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' });
@@ -24,17 +25,18 @@ const rForm = reactive({ id: null, name: '', description: '', costCoins: 200, ti
 const lForm = reactive({ id: null, name: '', description: '' });
 const bookInput = reactive({});
 const bookEdit = reactive({});
+const gForm = reactive({ name: '' });
 
 const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['genres', 'Genres read'], ['mediums', 'Formats read'], ['streak', 'Day streak'], ['manual', 'Manual / bounty']];
 const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
 const liveRewards = computed(() => rewards.value.filter((r) => r.status !== 'pending'));
 const pendingCount = computed(() => claims.value.length + pendingRewards.value.length);
-const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists']];
+const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']];
 
 async function load() {
   try {
-    [members.value, quests.value, rewards.value, redemptions.value, claims.value, lists.value] = await Promise.all([
-      api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(), api.lists(),
+    [members.value, quests.value, rewards.value, redemptions.value, claims.value, lists.value, genres.value] = await Promise.all([
+      api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(), api.lists(), api.admin.genres(),
     ]);
     for (const l of lists.value) if (!bookInput[l.id]) bookInput[l.id] = { title: '', author: '' };
   } catch (e) {
@@ -44,6 +46,16 @@ async function load() {
 onMounted(load);
 
 async function act(fn) { try { await fn(); await load(); } catch (e) { toast.value = e.message; } }
+
+async function createGenre() {
+  if (!gForm.name.trim()) return;
+  await act(() => api.admin.createGenre({ name: gForm.name.trim() }));
+  toast.value = 'Genre added'; gForm.name = '';
+}
+function removeGenre(g) {
+  if (!confirm(`Remove the "${g.name}" genre? Existing logs keep their tags.`)) return;
+  act(() => api.admin.deleteGenre(g.id));
+}
 
 function resetMember() { Object.assign(mForm, { id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' }); }
 function editMember(m) {
@@ -266,6 +278,25 @@ async function addBook(l) {
             <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" :aria-label="bookEdit[l.id] ? 'save book' : 'add book'" @click="addBook(l)"><i :class="bookEdit[l.id] ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i></button>
             <button v-if="bookEdit[l.id]" class="chip" aria-label="cancel" @click="cancelBook(l)"><i class="ti ti-x" aria-hidden="true"></i></button>
           </div>
+        </div>
+      </template>
+
+      <!-- GENRES -->
+      <template v-if="tab === 'genres'">
+        <div class="card" style="display:flex;flex-direction:column;gap:9px;">
+          <div class="sub">Add a genre</div>
+          <div class="row" style="gap:8px;">
+            <input v-model="gForm.name" placeholder="Genre name (e.g. Drama)" style="flex:1;" @keyup.enter="createGenre" />
+            <button class="btn" style="width:auto;padding:13px 16px;" @click="createGenre"><i class="ti ti-plus" aria-hidden="true"></i> Add</button>
+          </div>
+          <div class="sub" style="font-size:12px;">Genres members can tag when logging. Removing one leaves existing logs untouched.</div>
+        </div>
+        <div class="card" style="display:flex;flex-wrap:wrap;gap:8px;">
+          <span v-for="g in genres" :key="g.id" class="chip" style="gap:7px;">
+            {{ g.name }}
+            <button aria-label="remove genre" @click="removeGenre(g)" style="background:none;border:none;cursor:pointer;color:var(--ink2);padding:0;display:flex;"><i class="ti ti-x" aria-hidden="true"></i></button>
+          </span>
+          <div v-if="!genres.length" class="sub">No genres yet.</div>
         </div>
       </template>
     </template>

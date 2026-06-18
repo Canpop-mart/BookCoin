@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
@@ -17,8 +17,13 @@ const quote = ref('');
 const saving = ref(false);
 const error = ref('');
 const result = ref(null);
+const genreList = ref(GENRES); // fallback; replaced by the admin-managed list below
 
-const estCoins = computed(() => Math.max(1, Math.round((minutes.value / 60) * 20)));
+onMounted(async () => {
+  try { const g = await api.genres(); if (Array.isArray(g) && g.length) genreList.value = g; } catch {}
+});
+
+const estCoins = computed(() => Math.max(1, Math.round((minutes.value / 60) * 67)));
 
 function toggleGenre(g) {
   const i = genres.value.indexOf(g);
@@ -77,7 +82,7 @@ async function save() {
     <div>
       <div class="sub" style="margin-bottom:7px;">Genre <span v-if="genres.length" style="color:var(--gold-d);">· new genres earn a bonus</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px;">
-        <button v-for="g in GENRES" :key="g" class="chip" :class="{ on: genres.includes(g) }" @click="toggleGenre(g)">{{ g }}</button>
+        <button v-for="g in genreList" :key="g" class="chip" :class="{ on: genres.includes(g) }" @click="toggleGenre(g)">{{ g }}</button>
       </div>
     </div>
 
