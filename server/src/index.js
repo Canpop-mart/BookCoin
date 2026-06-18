@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import { baseCoins, COMFORT_ZONE_MULTIPLIER } from './coins.js';
+import { startBackups } from './backup.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const STATIC_ROOT = process.env.BOOKCOIN_STATIC ?? join(import.meta.dirname, '../../app/dist');
@@ -19,6 +20,7 @@ const publicMember = (m) => ({
   id: m.id, name: m.name, initials: m.initials, color: m.color,
   monthlyGoalMinutes: m.monthly_goal_minutes, role: m.role,
   theme: m.theme || 'classic', emblem: m.emblem || '', mascot: m.mascot || 'wizard',
+  onboarded: !!m.onboarded,
 });
 
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
@@ -401,6 +403,13 @@ api.post('/me/goal', async (c) => {
   const minutes = Math.max(30, Math.min(6000, Math.round(Number(b.minutes) || 0)));
   db.prepare('UPDATE members SET monthly_goal_minutes = ? WHERE id = ?').run(minutes, m.id);
   return c.json({ monthlyGoalMinutes: minutes });
+});
+
+// mark the first-run tutorial as seen (once per member)
+api.post('/me/onboarded', (c) => {
+  const m = c.get('member');
+  db.prepare('UPDATE members SET onboarded = 1 WHERE id = ?').run(m.id);
+  return c.json(publicMember(db.prepare('SELECT * FROM members WHERE id = ?').get(m.id)));
 });
 
 // free personalization — members style their own profile/app (not a coin sink)
@@ -814,6 +823,7 @@ if (existsSync(STATIC_ROOT)) {
 
 runFinalization();
 setInterval(runFinalization, 60 * 60 * 1000); // hourly: finalize any month that has rolled over
+startBackups(); // snapshot the DB on boot + daily
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[bookcoin] server on http://localhost:${info.port}`);

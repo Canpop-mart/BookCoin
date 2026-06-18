@@ -126,6 +126,18 @@ input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
 .fade-enter-active, .fade-leave-active { transition: opacity .16s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
+/* floating "reading in progress" indicator */
+.resume-pill {
+  position: fixed; left: 50%; bottom: calc(74px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--terra); color: #fff; border: none; cursor: pointer;
+  padding: 11px 18px; border-radius: 999px;
+  font-family: 'Quicksand', sans-serif; font-weight: 600; font-size: 14px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .22); max-width: calc(100% - 32px);
+}
+.resume-pill i { font-size: 17px; }
+
 /* ---------- motion & polish ---------- */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
