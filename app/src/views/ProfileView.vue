@@ -203,7 +203,8 @@ async function logout() {
           :style="{ height: (30 + bookSpine(b).tall * 4) + 'px', width: (12 + bookSpine(b).wide * 2) + 'px', background: bookSpine(b).bg }" :title="b.title"></div>
       </div>
       <div v-for="b in data.shelf.reading" :key="b.id" class="row" style="gap:8px;">
-        <i class="ti ti-book" style="color:var(--terra);font-size:15px;flex-shrink:0;" aria-hidden="true"></i>
+        <span v-if="b.emoji" style="font-size:15px;flex-shrink:0;line-height:1;">{{ b.emoji }}</span>
+        <i v-else class="ti ti-book" style="color:var(--terra);font-size:15px;flex-shrink:0;" aria-hidden="true"></i>
         <div style="min-width:0;font-size:13px;"><span style="font-weight:600;">{{ b.title }}</span><span class="sub" v-if="b.author"> · {{ b.author }}</span> <span class="sub">· reading</span></div>
       </div>
       <div v-if="!data.shelf.finishedTotal && !data.shelf.reading.length && !data.shelf.wantTotal" class="sub">{{ isMe ? 'Add the book you’re reading to start your shelf.' : 'No books on the shelf yet.' }}</div>

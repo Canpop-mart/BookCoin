@@ -28,6 +28,10 @@ function spine(b) {
   return { bg: s.bg, height: 116 + s.tall * 8, width: 30 + s.wide * 4 };
 }
 
+const COVER_EMOJIS = ['', '📕', '📗', '📘', '📙', '📚', '🐉', '🚀', '🔮', '🗺️', '🏰', '💀', '❤️', '🌙', '⭐', '🦄', '🐈', '☕', '🌸', '🔪', '🧪', '⚔️', '👑', '🌊'];
+async function setEmoji(b, e) { await api.updateBook(b.id, { emoji: e }); await load(); }
+function pick(b) { selectedId.value = selectedId.value === b.id ? null : b.id; }
+
 async function add() {
   if (!form.title.trim()) return;
   busy.value = 'add';
@@ -83,7 +87,7 @@ const fmtDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateS
       <div class="sub" style="margin-top:2px;"><i class="ti ti-book" aria-hidden="true"></i> Reading now</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
         <div v-for="b in reading" :key="b.id" class="card row" style="gap:12px;">
-          <span class="av" style="width:38px;height:50px;border-radius:4px 7px 7px 4px;flex-shrink:0;" :style="{ background: spine(b).bg }"><i class="ti ti-book" style="font-size:18px;color:#fff;opacity:.9;" aria-hidden="true"></i></span>
+          <button class="av" style="width:38px;height:50px;border:none;border-radius:4px 7px 7px 4px;flex-shrink:0;cursor:pointer;font-size:22px;" :style="{ background: spine(b).bg }" :title="b.emoji ? 'Edit cover' : 'Add a cover emoji'" @click="pick(b)"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-book" style="font-size:18px;color:#fff;opacity:.9;" aria-hidden="true"></i></button>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div>
             <div class="sub" v-if="b.author">{{ b.author }}</div>
@@ -101,7 +105,8 @@ const fmtDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateS
       <div v-else class="shelf">
         <div v-for="b in finished" :key="b.id" class="slot">
           <button class="spine" :class="{ sel: selectedId === b.id }" :style="{ height: spine(b).height + 'px', width: spine(b).width + 'px', background: spine(b).bg }"
-            @click="selectedId = selectedId === b.id ? null : b.id" :title="b.title">
+            @click="pick(b)" :title="b.title">
+            <span class="spine-emoji" v-if="b.emoji">{{ b.emoji }}</span>
             <span class="spine-title">{{ b.title }}</span>
             <span class="spine-stars" v-if="b.rating">{{ '★'.repeat(b.rating) }}</span>
           </button>
@@ -110,17 +115,27 @@ const fmtDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateS
     </div>
 
     <!-- selected spine detail -->
-    <div v-if="selected" class="card pop-in" style="display:flex;gap:12px;align-items:center;">
-      <span class="av" style="width:34px;height:46px;border-radius:4px 7px 7px 4px;flex-shrink:0;" :style="{ background: spine(selected).bg }"></span>
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:600;">{{ selected.title }}</div>
-        <div class="sub" v-if="selected.author">{{ selected.author }}</div>
-        <div class="row" style="gap:3px;margin-top:3px;">
-          <span v-for="n in 5" :key="n" @click="rate(selected, n)" style="cursor:pointer;font-size:16px;line-height:1;color:var(--gold);" :style="{ opacity: n <= (selected.rating || 0) ? 1 : 0.28 }">★</span>
-          <span class="sub" style="margin-left:6px;">{{ fmtDate(selected.finishedAt) }}</span>
+    <div v-if="selected" class="card pop-in" style="display:flex;flex-direction:column;gap:11px;">
+      <div class="row" style="gap:12px;align-items:center;">
+        <span class="av" style="width:34px;height:46px;border-radius:4px 7px 7px 4px;flex-shrink:0;font-size:20px;" :style="{ background: spine(selected).bg }"><span v-if="selected.emoji">{{ selected.emoji }}</span></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;">{{ selected.title }}</div>
+          <div class="sub" v-if="selected.author">{{ selected.author }}</div>
+          <div v-if="selected.status === 'finished'" class="row" style="gap:3px;margin-top:3px;">
+            <span v-for="n in 5" :key="n" @click="rate(selected, n)" style="cursor:pointer;font-size:16px;line-height:1;color:var(--gold);" :style="{ opacity: n <= (selected.rating || 0) ? 1 : 0.28 }">★</span>
+            <span class="sub" style="margin-left:6px;">{{ fmtDate(selected.finishedAt) }}</span>
+          </div>
+        </div>
+        <button class="chip" aria-label="remove" @click="remove(selected)"><i class="ti ti-trash" aria-hidden="true"></i></button>
+      </div>
+      <div>
+        <div class="sub" style="margin-bottom:7px;">Cover</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;">
+          <button v-for="e in COVER_EMOJIS" :key="e || 'none'" class="chip" :class="{ on: (selected.emoji || '') === e }" style="width:36px;height:36px;justify-content:center;padding:0;font-size:17px;" :aria-label="e || 'no cover'" @click="setEmoji(selected, e)">
+            <span v-if="e">{{ e }}</span><i v-else class="ti ti-ban" style="font-size:14px;" aria-hidden="true"></i>
+          </button>
         </div>
       </div>
-      <button class="chip" aria-label="remove" @click="remove(selected)"><i class="ti ti-trash" aria-hidden="true"></i></button>
     </div>
 
     <!-- WANT TO READ -->
@@ -128,7 +143,7 @@ const fmtDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateS
       <div class="sub" style="margin-top:4px;"><i class="ti ti-bookmark" aria-hidden="true"></i> Up next</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:8px;">
         <div v-for="b in want" :key="b.id" class="card row" style="gap:11px;padding:10px 14px;">
-          <i class="ti ti-bookmark" style="color:var(--ink2);font-size:16px;flex-shrink:0;" aria-hidden="true"></i>
+          <button class="av" style="width:30px;height:40px;border:none;border-radius:3px 6px 6px 3px;flex-shrink:0;cursor:pointer;font-size:17px;background:#EAE0D2;color:#8A7660;" :title="b.emoji ? 'Edit cover' : 'Add a cover emoji'" @click="pick(b)"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-bookmark" style="font-size:14px;" aria-hidden="true"></i></button>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div>
             <div class="sub" v-if="b.author">{{ b.author }}</div>
@@ -204,9 +219,16 @@ const fmtDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateS
   color: rgba(255, 255, 255, .94);
   white-space: nowrap;
   overflow: hidden;
-  max-height: calc(100% - 26px);
+  max-height: calc(100% - 40px);
   text-shadow: 0 1px 2px rgba(0, 0, 0, .35);
   letter-spacing: .2px;
+}
+.spine-emoji {
+  position: absolute;
+  top: 5px;
+  font-size: 13px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .3));
 }
 .spine-stars {
   position: absolute;

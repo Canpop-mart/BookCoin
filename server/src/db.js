@@ -160,6 +160,10 @@ if (!memberCols.includes('emblem')) db.exec("ALTER TABLE members ADD COLUMN embl
 if (!memberCols.includes('mascot')) db.exec("ALTER TABLE members ADD COLUMN mascot TEXT NOT NULL DEFAULT 'wizard'");
 if (!memberCols.includes('onboarded')) db.exec('ALTER TABLE members ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0');
 
+// --- migration: custom emoji "cover" on bookshelf books ---
+const bookCols = db.prepare('PRAGMA table_info(member_books)').all().map((c) => c.name);
+if (!bookCols.includes('emoji')) db.exec("ALTER TABLE member_books ADD COLUMN emoji TEXT NOT NULL DEFAULT ''");
+
 // --- migration: member-owned rewards (owner, status, cut %) ---
 const rewardCols = db.prepare('PRAGMA table_info(rewards)').all().map((c) => c.name);
 if (!rewardCols.includes('owner_id')) db.exec('ALTER TABLE rewards ADD COLUMN owner_id INTEGER');
@@ -198,7 +202,7 @@ if (db.prepare('SELECT COUNT(*) AS n FROM quests').get().n === 0) {
   q.run('Format hopper', 'Read 3 different formats this month', 'mediums', 3, 100, 'month', 0);
   q.run('Seven-day streak', 'Read 7 days in a row', 'streak', 7, 120, 'once', 0);
   q.run('Bookworm', 'Log 12 reading sessions this month', 'sessions', 12, 80, 'month', 0);
-  q.run('Finish a classic', 'Read a book from the classics list, then claim it', 'manual', 1, 250, 'month', 1);
+  q.run('Finish a classic', 'Read a book from the classics list, then claim it', 'manual', 1, 100, 'month', 1);
   console.log('[bookcoin] seeded starter quests');
 }
 
@@ -243,14 +247,14 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'seed_extra_1'").get()) {
   const haveQuest = (t) => db.prepare('SELECT 1 FROM quests WHERE title = ?').get(t);
   const addChallenge = db.prepare("INSERT INTO quests (title, description, type, target, reward_coins, period, requires_approval) VALUES (?, ?, 'manual', 1, ?, 'month', ?)");
   for (const [title, desc, coins, appr] of [
-    ["Read someone else's favorite", 'Read a book another member loves', 250, 1],
-    ['Buddy read', 'Read the same book as someone else this month', 200, 1],
-    ['Pass it on', 'Recommend a book that someone else then reads', 150, 1],
-    ['Book to screen', 'Read a book that became a movie or show, then watch it', 200, 0],
-    ['Around the world', 'Read a book set in another country', 150, 0],
-    ['Older than you', 'Read a book published before you were born', 150, 0],
-    ['Finish a series', 'Read every book in a series', 300, 1],
-    ['Reread a favorite', 'Revisit a book you already love', 100, 0],
+    ["Read someone else's favorite", 'Read a book another member loves', 100, 1],
+    ['Buddy read', 'Read the same book as someone else this month', 100, 1],
+    ['Pass it on', 'Recommend a book that someone else then reads', 75, 1],
+    ['Book to screen', 'Read a book that became a movie or show, then watch it', 75, 0],
+    ['Around the world', 'Read a book set in another country', 50, 0],
+    ['Older than you', 'Read a book published before you were born', 50, 0],
+    ['Finish a series', 'Read every book in a series', 150, 1],
+    ['Reread a favorite', 'Revisit a book you already love', 50, 0],
   ]) if (!haveQuest(title)) addChallenge.run(title, desc, coins, appr);
 
   const addList = (name, description, books) => {
@@ -320,4 +324,23 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'econ_v2'").get()) {
   ]) reprice.run(newP, name, oldP);
   db.prepare("INSERT INTO meta (key, value) VALUES ('econ_v2', '1')").run();
   console.log('[bookcoin] economy v2 — anchored default reward prices to 100 coins = $1');
+}
+
+// --- re-price the default challenges down to small "little extra" bonuses, in line
+//     with quests. Matches title + original price so admin edits are left alone. ---
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'challenge_reprice_1'").get()) {
+  const reprice = db.prepare('UPDATE quests SET reward_coins = ? WHERE title = ? AND reward_coins = ?');
+  for (const [title, oldP, newP] of [
+    ['Finish a classic', 250, 100],
+    ["Read someone else's favorite", 250, 100],
+    ['Buddy read', 200, 100],
+    ['Pass it on', 150, 75],
+    ['Book to screen', 200, 75],
+    ['Around the world', 150, 50],
+    ['Older than you', 150, 50],
+    ['Finish a series', 300, 150],
+    ['Reread a favorite', 100, 50],
+  ]) reprice.run(newP, title, oldP);
+  db.prepare("INSERT INTO meta (key, value) VALUES ('challenge_reprice_1', '1')").run();
+  console.log('[bookcoin] re-priced default challenges to little-bonus values');
 }

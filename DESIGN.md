@@ -81,12 +81,12 @@ Two distinct concepts — **don't conflate them**:
 > **Design intent — the rhythm:** base earn is a steady *trickle*; quests (§8) are the *jackpots*. Reliable income from showing up, big bonuses from being adventurous.
 
 ### Money anchor (conscious ratio)
-**100 coins = $1.** A solid ~15 hr reading month earns ~1,000 coins ≈ **$10 ≈ one boba** — so a dedicated month buys a real treat, and every reward's coin price has a clear dollar meaning. Reward-pricing UIs surface the `≈ $` equivalent so whoever sets a price does it consciously. Tunables live in `server/src/coins.js` (`COINS_PER_DOLLAR`, `BASE_COINS_PER_HOUR`).
+**100 coins = $1**, and base earn is **1 coin per minute** (60/hr). A ~15 hr reading month earns ~900 coins (~$9) — about a boba's worth — and every reward's coin price has a clear dollar meaning. Reward-pricing UIs surface the `≈ $` equivalent so whoever sets a price does it consciously. Tunables live in `server/src/coins.js` (`COINS_PER_DOLLAR`, `BASE_COINS_PER_HOUR`).
 
 ### Numbers (all tunable — see coins.js)
 | Source                         | Coins        |
 |--------------------------------|--------------|
-| Base earn                      | ~67 / hour read (≈ $0.67) |
+| Base earn                      | 60 / hour read = 1 coin / minute (≈ $0.60) |
 | Comfort-zone log (new genre)   | base × 1.5   |
 | Monthly rank: 1st / 2nd / 3rd  | +300 / 200 / 100 ($3 / $2 / $1) |
 | Bonus star (most genres/sessions/pages/days/formats) | +100 each ($1) |

@@ -153,7 +153,7 @@ const rowToSession = (r) => ({
 
 const rowToBook = (b) => ({
   id: b.id, memberId: b.member_id, title: b.title, author: b.author, status: b.status,
-  rating: b.rating, startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
+  rating: b.rating, emoji: b.emoji || '', startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
 });
 
 const periodKeyFor = (quest) => (quest.period === 'month' ? monthKey() : 'once');
@@ -309,7 +309,11 @@ api.post('/sessions', async (c) => {
   db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
     .run(m.id, coins, 'base-earn', info.lastInsertRowid);
 
-  return c.json({ sessionId: Number(info.lastInsertRowid), coins, multiplier, isNewGenre, balance: balance(m.id) });
+  return c.json({
+    sessionId: Number(info.lastInsertRowid),
+    coins, base: baseCoins(minutes), multiplier, isNewGenre, minutes,
+    balance: balance(m.id),
+  });
 });
 
 api.get('/me/sessions', (c) => {
@@ -349,11 +353,12 @@ api.patch('/me/books/:id', async (c) => {
   const author = b.author != null ? String(b.author).trim() : bk.author;
   const status = BOOK_STATUSES.includes(b.status) ? b.status : bk.status;
   const rating = b.rating != null ? (b.rating ? Math.max(1, Math.min(5, Math.round(Number(b.rating)))) : null) : bk.rating;
+  const emoji = b.emoji != null ? String(b.emoji).slice(0, 8) : bk.emoji;
   // stamp transitions: first time it starts / finishes
   const startedAt = bk.started_at || (status !== 'want' ? nowStr() : null);
   const finishedAt = status === 'finished' ? (bk.finished_at || nowStr()) : null;
-  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, started_at = ?, finished_at = ? WHERE id = ?')
-    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), startedAt, finishedAt, id);
+  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, emoji = ?, started_at = ?, finished_at = ? WHERE id = ?')
+    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), emoji, startedAt, finishedAt, id);
   return c.json(rowToBook(db.prepare('SELECT * FROM member_books WHERE id = ?').get(id)));
 });
 

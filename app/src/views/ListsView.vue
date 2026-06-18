@@ -12,6 +12,15 @@ onMounted(async () => {
   try { lists.value = await api.lists(); } finally { loading.value = false; }
 });
 function toggle(id) { open.value[id] = !open.value[id]; }
+
+const busy = ref(null);
+const added = ref({});
+async function addToWant(b) {
+  if (added.value[b.id] || busy.value === b.id) return;
+  busy.value = b.id;
+  try { await api.addBook({ title: b.title, author: b.author, status: 'want' }); added.value[b.id] = true; }
+  catch {} finally { busy.value = null; }
+}
 </script>
 
 <template>
@@ -39,7 +48,13 @@ function toggle(id) { open.value[id] = !open.value[id]; }
           <div v-if="l.description" class="sub" style="margin-top:-2px;">{{ l.description }}</div>
           <div v-for="b in l.books" :key="b.id" class="row" style="gap:10px;">
             <i class="ti ti-book" style="color:var(--terra);font-size:16px;flex-shrink:0;" aria-hidden="true"></i>
-            <div style="min-width:0;"><div style="font-weight:600;font-size:14px;">{{ b.title }}</div><div class="sub" v-if="b.author">{{ b.author }}</div></div>
+            <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14px;">{{ b.title }}</div><div class="sub" v-if="b.author">{{ b.author }}</div></div>
+            <button class="chip" :disabled="busy === b.id" style="padding:5px 9px;flex-shrink:0;"
+              :style="added[b.id] ? { background: 'var(--sage-bg)', color: 'var(--sage-d)' } : {}"
+              :aria-label="added[b.id] ? 'on your want-to-read shelf' : 'add to want to read'"
+              :title="added[b.id] ? 'On your want-to-read shelf' : 'Add to want to read'" @click="addToWant(b)">
+              <i :class="added[b.id] ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i>
+            </button>
           </div>
           <div v-if="!l.books.length" class="sub">No books in this list yet.</div>
         </div>
