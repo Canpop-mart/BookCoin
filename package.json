@@ -1,6 +1,6 @@
 {
   "name": "bookcoin",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "A cozy, self-hosted family reading game.",
   "scripts": {

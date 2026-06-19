@@ -13,18 +13,22 @@ const burst = ref(false);
 const view = ref('store');
 const menuOpen = ref(false);
 const showOffer = ref(false);
-const households = ref([]);
-const form = reactive({ name: '', description: '', costCoins: 50, tier: 'mid', scope: 'household' });
+const members = ref([]);
+const form = reactive({ name: '', description: '', costCoins: 50, tier: 'mid', scope: 'everyone', audience: [] });
 
 const toDeliver = computed(() => offers.value.toFulfill.length);
 const VIEWS = { store: 'Store', offers: 'My offers', receipts: 'Purchases' };
 const viewLabel = computed(() => VIEWS[view.value]);
 function setView(v) { view.value = v; menuOpen.value = false; }
-const myHousehold = computed(() => households.value.find((h) => h.id === store.member.householdId));
-const myHouseholdName = computed(() => myHousehold.value?.name || 'My household');
+// people you can offer a reward to — everyone except yourself
+const otherMembers = computed(() => members.value.filter((m) => m.id !== store.member.id));
+function toggleAudience(id) {
+  const i = form.audience.indexOf(id);
+  if (i === -1) form.audience.push(id); else form.audience.splice(i, 1);
+}
 
 async function load() {
-  [data.value, redemptions.value, offers.value, households.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers(), api.households()]);
+  [data.value, redemptions.value, offers.value, members.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers(), api.members()]);
   store.setDeliveries(offers.value.toFulfill.length); // drives the nav badge
 }
 onMounted(load);
@@ -52,8 +56,9 @@ function redeem(r) {
 }
 function submitOffer() {
   if (!form.name.trim()) { toast.value = 'Give it a name'; return; }
+  if (form.scope === 'people' && !form.audience.length) { toast.value = 'Pick who it\'s for, or choose Everyone'; return; }
   run(() => api.createReward({ ...form }), store.member.role === 'admin' ? 'Reward added' : 'Sent to an admin for approval')
-    .then(() => { showOffer.value = false; form.name = ''; form.description = ''; });
+    .then(() => { showOffer.value = false; form.name = ''; form.description = ''; form.scope = 'everyone'; form.audience = []; });
 }
 </script>
 
@@ -95,11 +100,16 @@ function submitOffer() {
             <select v-model="form.tier"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
           </label>
         </div>
-        <div v-if="households.length > 1">
-          <div class="sub" style="margin-bottom:6px;">Who can buy this?</div>
+        <div>
+          <div class="sub" style="margin-bottom:6px;">Who's this for?</div>
           <div class="row" style="gap:8px;">
-            <button type="button" class="chip" :class="{ on: form.scope === 'household' }" style="flex:1;justify-content:center;" @click="form.scope = 'household'"><i class="ti ti-home" aria-hidden="true"></i> {{ myHouseholdName }}</button>
             <button type="button" class="chip" :class="{ on: form.scope === 'everyone' }" style="flex:1;justify-content:center;" @click="form.scope = 'everyone'"><i class="ti ti-users" aria-hidden="true"></i> Everyone</button>
+            <button type="button" class="chip" :class="{ on: form.scope === 'people' }" style="flex:1;justify-content:center;" @click="form.scope = 'people'"><i class="ti ti-user-check" aria-hidden="true"></i> Specific people</button>
+          </div>
+          <div v-if="form.scope === 'people'" class="row" style="gap:7px;flex-wrap:wrap;margin-top:8px;">
+            <button v-for="m in otherMembers" :key="m.id" type="button" class="chip" :class="{ on: form.audience.includes(m.id) }" style="gap:6px;" @click="toggleAudience(m.id)">
+              <Avatar :member="m" :size="18" /> {{ m.name }}
+            </button>
           </div>
         </div>
         <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. When someone buys it you keep <strong style="color:var(--ink);">{{ Math.ceil((form.costCoins || 0) * 0.2) }}</strong> (20%); the rest is spent.</div>
@@ -119,7 +129,7 @@ function submitOffer() {
             <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap;">
               <Avatar :avatar="r.ownerAvatar" :color="r.ownerColor" :initials="r.ownerInitials" :size="18" />
               <span class="sub">from {{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
-              <span v-if="r.scope === 'household'" class="chip" style="padding:1px 8px;font-size:11px;background:var(--sage-bg);color:var(--sage-d);"><i class="ti ti-home" aria-hidden="true"></i> {{ r.householdName }}</span>
+              <span v-if="r.scope === 'people'" class="chip" style="padding:1px 8px;font-size:11px;background:var(--blush-bg);color:var(--blush-d);"><i class="ti ti-user-check" aria-hidden="true"></i> just for you</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">
@@ -150,7 +160,7 @@ function submitOffer() {
       <template v-if="offers.mine.length">
         <div class="sub" style="margin-top:4px;">Listed by you</div>
         <div v-for="r in offers.mine" :key="r.id" class="card row" style="padding:11px 14px;gap:8px;">
-          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }}<span v-if="households.length > 1"> · {{ r.scope === 'household' ? (r.householdName || 'household') : 'everyone' }}</span></span></div>
+          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }} · {{ r.scope === 'people' ? 'for ' + (r.audience || []).join(', ') : 'everyone' }}</span></div>
           <span class="chip" :style="statusStyle(r.status)" style="padding:3px 10px;">{{ r.status }}</span>
           <button class="chip" :disabled="busy" @click="run(() => api.archiveReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>

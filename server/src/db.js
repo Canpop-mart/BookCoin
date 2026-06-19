@@ -185,9 +185,18 @@ if (!rewardCols.includes('status')) {
   db.exec("UPDATE rewards SET status = CASE WHEN active = 0 THEN 'archived' ELSE 'approved' END");
 }
 
-// --- migration: reward scope (everyone | household) ---
+// --- migration: reward scope. scope = 'everyone' | 'people' (specific members). ---
+// (household_id is vestigial from the old household-scoped model; kept harmless.)
 if (!rewardCols.includes('scope')) db.exec("ALTER TABLE rewards ADD COLUMN scope TEXT NOT NULL DEFAULT 'everyone'");
 if (!rewardCols.includes('household_id')) db.exec('ALTER TABLE rewards ADD COLUMN household_id INTEGER REFERENCES households(id)');
+// per-person reward audience (used when scope = 'people')
+db.exec(`CREATE TABLE IF NOT EXISTS reward_audience (
+  reward_id INTEGER NOT NULL REFERENCES rewards(id),
+  member_id INTEGER NOT NULL REFERENCES members(id),
+  PRIMARY KEY (reward_id, member_id)
+);`);
+// retire the old household-scoped rewards: make any of them visible to everyone (idempotent)
+db.exec("UPDATE rewards SET scope = 'everyone', household_id = NULL WHERE scope = 'household'");
 
 // --- one-time bootstrap: seed a single admin on a brand-new database ---
 // (real members are created from the admin portal; the `seeded` flag means
