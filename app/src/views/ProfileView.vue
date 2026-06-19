@@ -42,6 +42,7 @@ const MASCOTS = [{ id: 'wizard', label: 'Wizard' }, { id: 'owl', label: 'Owl' },
 const EMBLEMS = ['', '📚', '🦉', '🐉', '🌙', '☕', '🪐', '🌟', '🐈', '🦄', '🎧', '🌸'];
 const AVATAR_COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const showCustomize = ref(false);
+const showMore = ref(false);
 async function setAppearance(patch) {
   const updated = await api.setAppearance(patch);
   store.setMember(updated);   // recolours nav avatar + applies theme app-wide
@@ -117,25 +118,6 @@ async function logout() {
           <button class="chip" :disabled="savingGoal" @click="saveGoal" style="margin-left:auto;background:var(--sage-bg);color:var(--sage-d);"><i class="ti ti-check" aria-hidden="true"></i> Save</button>
         </div>
       </div>
-      <div>
-        <div class="sub" style="margin-bottom:8px;">Theme</div>
-          <div class="row" style="gap:8px;flex-wrap:wrap;">
-            <button v-for="t in THEMES" :key="t.id" class="chip" :class="{ on: (data.member.theme || 'classic') === t.id }" style="gap:7px;" @click="setAppearance({ theme: t.id })">
-              <span style="width:13px;height:13px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.12);" :style="{ background: t.dot }"></span>{{ t.label }}
-            </button>
-          </div>
-        </div>
-        <div>
-          <div class="sub" style="margin-bottom:8px;">Mascot</div>
-          <div class="row" style="gap:8px;flex-wrap:wrap;">
-            <button v-for="mc in MASCOTS" :key="mc.id" @click="setAppearance({ mascot: mc.id })"
-              style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;border-radius:16px;padding:6px 4px 4px;width:62px;font-family:inherit;background:var(--card);"
-              :style="{ border: (data.member.mascot || 'wizard') === mc.id ? '2px solid var(--terra)' : '2px solid var(--line)' }">
-              <Mascot :variant="mc.id" :size="40" eyes="happy" />
-              <span class="sub" style="font-size:11px;">{{ mc.label }}</span>
-            </button>
-          </div>
-        </div>
         <div>
           <div class="sub" style="margin-bottom:8px;">Avatar</div>
           <div class="row" style="gap:9px;flex-wrap:wrap;">
@@ -152,21 +134,43 @@ async function logout() {
           </div>
         </div>
         <div>
-          <div class="sub" style="margin-bottom:8px;">Avatar colour <span style="opacity:.6;">(for initials)</span></div>
-          <div class="row" style="gap:9px;flex-wrap:wrap;">
-            <button v-for="c in AVATAR_COLORS" :key="c" aria-label="avatar colour" @click="setAppearance({ color: c })"
-              :style="{ background: c, width: '30px', height: '30px', borderRadius: '50%', cursor: 'pointer', padding: 0, border: data.member.color === c ? '2px solid var(--ink)' : '2px solid transparent' }"></button>
-          </div>
-        </div>
-        <div>
-          <div class="sub" style="margin-bottom:8px;">Emblem</div>
-          <div class="row" style="gap:7px;flex-wrap:wrap;">
-            <button v-for="e in EMBLEMS" :key="e || 'none'" class="chip" :class="{ on: (data.member.emblem || '') === e }"
-              style="width:42px;height:42px;justify-content:center;padding:0;font-size:19px;" :aria-label="e || 'none'" @click="setAppearance({ emblem: e })">
-              <span v-if="e">{{ e }}</span><i v-else class="ti ti-ban" style="font-size:16px;" aria-hidden="true"></i>
+          <div class="sub" style="margin-bottom:8px;">Mascot</div>
+          <div class="row" style="gap:8px;flex-wrap:wrap;">
+            <button v-for="mc in MASCOTS" :key="mc.id" @click="setAppearance({ mascot: mc.id })"
+              style="display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;border-radius:16px;padding:6px 4px 4px;width:62px;font-family:inherit;background:var(--card);"
+              :style="{ border: (data.member.mascot || 'wizard') === mc.id ? '2px solid var(--terra)' : '2px solid var(--line)' }">
+              <Mascot :variant="mc.id" :size="40" eyes="happy" />
+              <span class="sub" style="font-size:11px;">{{ mc.label }}</span>
             </button>
           </div>
         </div>
+        <button class="chip" style="align-self:flex-start;" @click="showMore = !showMore">More options <i :class="showMore ? 'ti ti-chevron-up' : 'ti ti-chevron-down'" style="font-size:14px;" aria-hidden="true"></i></button>
+        <template v-if="showMore">
+          <div>
+            <div class="sub" style="margin-bottom:8px;">Theme</div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;">
+              <button v-for="t in THEMES" :key="t.id" class="chip" :class="{ on: (data.member.theme || 'classic') === t.id }" style="gap:7px;" @click="setAppearance({ theme: t.id })">
+                <span style="width:13px;height:13px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.12);" :style="{ background: t.dot }"></span>{{ t.label }}
+              </button>
+            </div>
+          </div>
+          <div v-if="!data.member.avatar">
+            <div class="sub" style="margin-bottom:8px;">Initials colour</div>
+            <div class="row" style="gap:9px;flex-wrap:wrap;">
+              <button v-for="c in AVATAR_COLORS" :key="c" aria-label="initials colour" @click="setAppearance({ color: c })"
+                :style="{ background: c, width: '30px', height: '30px', borderRadius: '50%', cursor: 'pointer', padding: 0, border: data.member.color === c ? '2px solid var(--ink)' : '2px solid transparent' }"></button>
+            </div>
+          </div>
+          <div>
+            <div class="sub" style="margin-bottom:8px;">Emblem</div>
+            <div class="row" style="gap:7px;flex-wrap:wrap;">
+              <button v-for="e in EMBLEMS" :key="e || 'none'" class="chip" :class="{ on: (data.member.emblem || '') === e }"
+                style="width:42px;height:42px;justify-content:center;padding:0;font-size:19px;" :aria-label="e || 'none'" @click="setAppearance({ emblem: e })">
+                <span v-if="e">{{ e }}</span><i v-else class="ti ti-ban" style="font-size:16px;" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+        </template>
       </div>
 
     <div class="card" style="padding:0;overflow:hidden;">

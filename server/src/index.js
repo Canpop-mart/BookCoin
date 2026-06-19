@@ -24,8 +24,18 @@ const publicMember = (m) => ({
   id: m.id, name: m.name, initials: m.initials, color: m.color,
   monthlyGoalMinutes: m.monthly_goal_minutes, role: m.role,
   theme: m.theme || 'classic', emblem: m.emblem || '', mascot: m.mascot || 'wizard',
-  avatar: m.avatar || '', onboarded: !!m.onboarded,
+  avatar: m.avatar || '', householdId: m.household_id ?? null, onboarded: !!m.onboarded,
 });
+
+const validHouseholdId = (v) => {
+  const id = Number(v);
+  return Number.isInteger(id) && db.prepare('SELECT 1 FROM households WHERE id = ?').get(id) ? id : null;
+};
+const householdsWithCounts = () => db.prepare(`
+  SELECT h.id, h.name, h.color, h.lead_member_id AS leadMemberId, lead.name AS leadName,
+         (SELECT COUNT(*) FROM members WHERE household_id = h.id) AS memberCount
+  FROM households h LEFT JOIN members lead ON lead.id = h.lead_member_id
+  ORDER BY h.id`).all();
 
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
 const nowStr = () => new Date().toISOString().slice(0, 19).replace('T', ' '); // matches SQLite datetime('now')
@@ -249,7 +259,9 @@ const api = new Hono();
 api.get('/health', (c) => c.json({ ok: true }));
 
 api.get('/members', (c) =>
-  c.json(db.prepare('SELECT id, name, initials, color, avatar FROM members ORDER BY id').all()));
+  c.json(db.prepare('SELECT id, name, initials, color, avatar, household_id AS householdId FROM members ORDER BY id').all()));
+
+api.get('/households', (c) => c.json(householdsWithCounts()));
 
 api.post('/login', async (c) => {
   const { memberId, pin } = await c.req.json().catch(() => ({}));
@@ -380,7 +392,7 @@ api.get('/leaderboard', (c) => {
   const period = c.req.query('period') === 'all' ? 'all' : 'month';
   const monthFilter = period === 'month' ? "AND strftime('%Y-%m', s.created_at) = ?" : '';
   const sql = `
-    SELECT m.id AS memberId, m.name, m.initials, m.color, m.avatar, m.monthly_goal_minutes AS goal,
+    SELECT m.id AS memberId, m.name, m.initials, m.color, m.avatar, m.household_id AS householdId, m.monthly_goal_minutes AS goal,
            COALESCE(SUM(s.minutes),0) AS minutes,
            COALESCE(SUM(s.pages),0) AS pages,
            COALESCE(SUM(s.coins),0) AS coins
@@ -494,11 +506,16 @@ api.post('/quests/:id/claim', (c) => {
 // ---- rewards / shop ----
 api.get('/rewards', (c) => {
   const m = c.get('member');
+  // a member sees everyone-scoped rewards + rewards scoped to their own household
   const rewards = db.prepare(`
     SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.owner_cut AS ownerCut,
-           r.owner_id AS ownerId, o.name AS ownerName, o.initials AS ownerInitials, o.color AS ownerColor, o.avatar AS ownerAvatar
-    FROM rewards r LEFT JOIN members o ON o.id = r.owner_id
-    WHERE r.status = 'approved' ORDER BY r.cost_coins`).all();
+           r.owner_id AS ownerId, r.scope, r.household_id AS householdId, hh.name AS householdName,
+           o.name AS ownerName, o.initials AS ownerInitials, o.color AS ownerColor, o.avatar AS ownerAvatar
+    FROM rewards r
+    LEFT JOIN members o ON o.id = r.owner_id
+    LEFT JOIN households hh ON hh.id = r.household_id
+    WHERE r.status = 'approved' AND (r.scope = 'everyone' OR r.household_id = ?)
+    ORDER BY r.cost_coins`).all(m.household_id ?? -1);
   return c.json({ balance: balance(m.id), rewards });
 });
 
@@ -511,9 +528,16 @@ api.post('/rewards', async (c) => {
   const stock = b.stock === '' || b.stock == null ? null : Math.max(0, Math.round(Number(b.stock)));
   const cut = OWNER_CUT_PCT; // fixed; members don't set their own cut
   const status = m.role === 'admin' ? 'approved' : 'pending';
+  // scope defaults to the offerer's own household; "everyone" makes it global
+  let scope = b.scope === 'everyone' ? 'everyone' : 'household';
+  let householdId = null;
+  if (scope === 'household') {
+    householdId = m.household_id ?? null;
+    if (!householdId) scope = 'everyone'; // no household → just make it global
+  }
   const info = db.prepare(
-    'INSERT INTO rewards (name, description, cost_coins, tier, stock, owner_id, owner_cut, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(b.name.trim(), b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock, m.id, cut, status);
+    'INSERT INTO rewards (name, description, cost_coins, tier, stock, owner_id, owner_cut, status, scope, household_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(b.name.trim(), b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock, m.id, cut, status, scope, householdId);
   return c.json({ id: Number(info.lastInsertRowid), status });
 });
 
@@ -554,9 +578,10 @@ api.get('/me/redemptions', (c) => {
 // rewards I offer + redemptions of mine waiting for me to deliver
 api.get('/me/offers', (c) => {
   const m = c.get('member');
-  const mine = db.prepare(
-    "SELECT id, name, cost_coins AS costCoins, status, owner_cut AS ownerCut FROM rewards WHERE owner_id = ? AND status != 'archived' ORDER BY id DESC"
-  ).all(m.id);
+  const mine = db.prepare(`
+    SELECT r.id, r.name, r.cost_coins AS costCoins, r.status, r.owner_cut AS ownerCut, r.scope, hh.name AS householdName
+    FROM rewards r LEFT JOIN households hh ON hh.id = r.household_id
+    WHERE r.owner_id = ? AND r.status != 'archived' ORDER BY r.id DESC`).all(m.id);
   const toFulfill = db.prepare(`
     SELECT rd.id, rd.cost_coins AS costCoins, rd.created_at AS createdAt, r.name, r.owner_cut AS ownerCut,
            mem.name AS member, mem.initials, mem.color, mem.avatar
@@ -615,8 +640,11 @@ api.delete('/admin/quests/:id', (c) => {
 
 api.get('/admin/rewards', (c) =>
   c.json(db.prepare(`
-    SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.status, r.owner_cut AS ownerCut, o.name AS ownerName
-    FROM rewards r LEFT JOIN members o ON o.id = r.owner_id
+    SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.status, r.owner_cut AS ownerCut,
+           r.scope, r.household_id AS householdId, hh.name AS householdName, o.name AS ownerName
+    FROM rewards r
+    LEFT JOIN members o ON o.id = r.owner_id
+    LEFT JOIN households hh ON hh.id = r.household_id
     WHERE r.status NOT IN ('archived', 'denied')
     ORDER BY (r.status = 'pending') DESC, r.cost_coins`).all()));
 
@@ -646,8 +674,14 @@ api.patch('/admin/rewards/:id', async (c) => {
   const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : r.tier;
   let stock = r.stock;
   if (b.stock !== undefined) stock = (b.stock === '' || b.stock == null) ? null : Math.max(0, Math.round(Number(b.stock) || 0));
-  db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, tier = ?, stock = ?, owner_cut = ? WHERE id = ?')
-    .run(name, desc, cost, tier, stock, OWNER_CUT_PCT, id);
+  let scope = r.scope, householdId = r.household_id;
+  if (b.scope === 'everyone') { scope = 'everyone'; householdId = null; }
+  else if (b.scope === 'household') {
+    const hh = validHouseholdId(b.householdId);
+    if (hh) { scope = 'household'; householdId = hh; }
+  }
+  db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, tier = ?, stock = ?, owner_cut = ?, scope = ?, household_id = ? WHERE id = ?')
+    .run(name, desc, cost, tier, stock, OWNER_CUT_PCT, scope, householdId, id);
   return c.json({ ok: true });
 });
 
@@ -692,7 +726,7 @@ api.post('/admin/quest-claims/:id/reject', (c) => {
 
 // ---- admin: members ----
 api.get('/admin/members', (c) =>
-  c.json(db.prepare('SELECT id, name, initials, color, role, monthly_goal_minutes AS monthlyGoalMinutes FROM members ORDER BY id').all()));
+  c.json(db.prepare('SELECT id, name, initials, color, avatar, role, monthly_goal_minutes AS monthlyGoalMinutes, household_id AS householdId FROM members ORDER BY id').all()));
 
 api.post('/admin/members', async (c) => {
   const b = await c.req.json().catch(() => ({}));
@@ -701,9 +735,11 @@ api.post('/admin/members', async (c) => {
   if (!b.pin) return c.json({ error: 'PIN required' }, 400);
   const initials = (b.initials || initialsFrom(name)).slice(0, 2).toUpperCase();
   const role = b.role === 'admin' ? 'admin' : 'member';
+  // new members join the named household, else the lowest-id (default "Home")
+  const household = validHouseholdId(b.householdId) ?? db.prepare('SELECT id FROM households ORDER BY id LIMIT 1').get()?.id ?? null;
   try {
-    const info = db.prepare('INSERT INTO members (name, initials, color, pin, role, monthly_goal_minutes) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(name, initials, b.color || nextColor(), String(b.pin), role, clampGoal(b.monthlyGoalMinutes));
+    const info = db.prepare('INSERT INTO members (name, initials, color, pin, role, monthly_goal_minutes, household_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(name, initials, b.color || nextColor(), String(b.pin), role, clampGoal(b.monthlyGoalMinutes), household);
     return c.json({ id: Number(info.lastInsertRowid) });
   } catch {
     return c.json({ error: 'That name is taken' }, 400);
@@ -729,6 +765,14 @@ api.patch('/admin/members/:id', async (c) => {
     return c.json({ error: 'That name is taken' }, 400);
   }
   if (b.pin) db.prepare('UPDATE members SET pin = ? WHERE id = ?').run(String(b.pin), id);
+  if (b.householdId !== undefined) {
+    const hh = validHouseholdId(b.householdId);
+    if (hh && hh !== m.household_id) {
+      db.prepare('UPDATE members SET household_id = ? WHERE id = ?').run(hh, id);
+      // if they led their previous household, vacate that lead seat
+      db.prepare('UPDATE households SET lead_member_id = NULL WHERE lead_member_id = ?').run(id);
+    }
+  }
   return c.json({ ok: true });
 });
 
@@ -751,6 +795,47 @@ api.delete('/admin/members/:id', (c) => {
     db.exec('ROLLBACK');
     return c.json({ error: 'Could not delete member' }, 500);
   }
+  return c.body(null, 204);
+});
+
+// ---- households (super-admin creates/edits; everyone defaults into one "Home") ----
+api.post('/admin/households', async (c) => {
+  const b = await c.req.json().catch(() => ({}));
+  const name = (b.name || '').trim();
+  if (!name) return c.json({ error: 'Name required' }, 400);
+  const color = /^#[0-9a-fA-F]{6}$/.test(b.color || '') ? b.color : '#E0785A';
+  const info = db.prepare('INSERT INTO households (name, color) VALUES (?, ?)').run(name, color);
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.patch('/admin/households/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  const h = db.prepare('SELECT * FROM households WHERE id = ?').get(id);
+  if (!h) return c.json({ error: 'Not found' }, 404);
+  const b = await c.req.json().catch(() => ({}));
+  const name = b.name != null && String(b.name).trim() ? String(b.name).trim() : h.name;
+  const color = b.color != null && /^#[0-9a-fA-F]{6}$/.test(b.color) ? b.color : h.color;
+  let lead = h.lead_member_id;
+  if (b.leadMemberId !== undefined) {
+    if (b.leadMemberId === null) lead = null;
+    else {
+      const lm = db.prepare('SELECT household_id FROM members WHERE id = ?').get(Number(b.leadMemberId));
+      if (!lm || lm.household_id !== id) return c.json({ error: 'Lead must be a member of this household' }, 400);
+      lead = Number(b.leadMemberId);
+    }
+  }
+  db.prepare('UPDATE households SET name = ?, color = ?, lead_member_id = ? WHERE id = ?').run(name, color, lead, id);
+  return c.json({ ok: true });
+});
+
+api.delete('/admin/households/:id', (c) => {
+  const id = Number(c.req.param('id'));
+  if (!db.prepare('SELECT 1 FROM households WHERE id = ?').get(id)) return c.json({ error: 'Not found' }, 404);
+  if (db.prepare('SELECT COUNT(*) AS n FROM households').get().n <= 1) return c.json({ error: 'Keep at least one household' }, 400);
+  if (db.prepare('SELECT COUNT(*) AS n FROM members WHERE household_id = ?').get(id).n > 0)
+    return c.json({ error: 'Move its members out first' }, 400);
+  db.prepare("UPDATE rewards SET scope = 'everyone', household_id = NULL WHERE household_id = ?").run(id);
+  db.prepare('DELETE FROM households WHERE id = ?').run(id);
   return c.body(null, 204);
 });
 

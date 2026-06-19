@@ -13,15 +13,18 @@ const burst = ref(false);
 const view = ref('store');
 const menuOpen = ref(false);
 const showOffer = ref(false);
-const form = reactive({ name: '', description: '', costCoins: 50, tier: 'mid' });
+const households = ref([]);
+const form = reactive({ name: '', description: '', costCoins: 50, tier: 'mid', scope: 'household' });
 
 const toDeliver = computed(() => offers.value.toFulfill.length);
 const VIEWS = { store: 'Store', offers: 'My offers', receipts: 'Purchases' };
 const viewLabel = computed(() => VIEWS[view.value]);
 function setView(v) { view.value = v; menuOpen.value = false; }
+const myHousehold = computed(() => households.value.find((h) => h.id === store.member.householdId));
+const myHouseholdName = computed(() => myHousehold.value?.name || 'My household');
 
 async function load() {
-  [data.value, redemptions.value, offers.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers()]);
+  [data.value, redemptions.value, offers.value, households.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers(), api.households()]);
   store.setDeliveries(offers.value.toFulfill.length); // drives the nav badge
 }
 onMounted(load);
@@ -92,6 +95,13 @@ function submitOffer() {
             <select v-model="form.tier"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
           </label>
         </div>
+        <div v-if="households.length > 1">
+          <div class="sub" style="margin-bottom:6px;">Who can buy this?</div>
+          <div class="row" style="gap:8px;">
+            <button type="button" class="chip" :class="{ on: form.scope === 'household' }" style="flex:1;justify-content:center;" @click="form.scope = 'household'"><i class="ti ti-home" aria-hidden="true"></i> {{ myHouseholdName }}</button>
+            <button type="button" class="chip" :class="{ on: form.scope === 'everyone' }" style="flex:1;justify-content:center;" @click="form.scope = 'everyone'"><i class="ti ti-users" aria-hidden="true"></i> Everyone</button>
+          </div>
+        </div>
         <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. When someone buys it you keep <strong style="color:var(--ink);">{{ Math.ceil((form.costCoins || 0) * 0.2) }}</strong> (20%); the rest is spent.</div>
         <button class="btn" :disabled="busy" @click="submitOffer"><i class="ti ti-check" aria-hidden="true"></i> {{ store.member.role === 'admin' ? 'Add reward' : 'Submit for approval' }}</button>
       </div>
@@ -106,9 +116,10 @@ function submitOffer() {
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;">{{ r.name }}</div>
             <div class="sub" v-if="r.description">{{ r.description }}</div>
-            <div class="row" style="gap:6px;margin-top:4px;">
+            <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap;">
               <Avatar :avatar="r.ownerAvatar" :color="r.ownerColor" :initials="r.ownerInitials" :size="18" />
               <span class="sub">from {{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
+              <span v-if="r.scope === 'household'" class="chip" style="padding:1px 8px;font-size:11px;background:var(--sage-bg);color:var(--sage-d);"><i class="ti ti-home" aria-hidden="true"></i> {{ r.householdName }}</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">
@@ -139,7 +150,7 @@ function submitOffer() {
       <template v-if="offers.mine.length">
         <div class="sub" style="margin-top:4px;">Listed by you</div>
         <div v-for="r in offers.mine" :key="r.id" class="card row" style="padding:11px 14px;gap:8px;">
-          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }}</span></div>
+          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }}<span v-if="households.length > 1"> · {{ r.scope === 'household' ? (r.householdName || 'household') : 'everyone' }}</span></span></div>
           <span class="chip" :style="statusStyle(r.status)" style="padding:3px 10px;">{{ r.status }}</span>
           <button class="chip" :disabled="busy" @click="run(() => api.archiveReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
