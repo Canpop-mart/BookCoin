@@ -10,6 +10,14 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS households (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#E0785A',
+    lead_member_id INTEGER,                 -- the household "lead" (day-to-day admin of this house)
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -161,6 +169,9 @@ if (!memberCols.includes('mascot')) db.exec("ALTER TABLE members ADD COLUMN masc
 if (!memberCols.includes('onboarded')) db.exec('ALTER TABLE members ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0');
 if (!memberCols.includes('avatar')) db.exec("ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT ''");
 
+// --- migration: multi-household support (household is a soft grouping, not a wall) ---
+if (!memberCols.includes('household_id')) db.exec('ALTER TABLE members ADD COLUMN household_id INTEGER REFERENCES households(id)');
+
 // --- migration: custom emoji "cover" on bookshelf books ---
 const bookCols = db.prepare('PRAGMA table_info(member_books)').all().map((c) => c.name);
 if (!bookCols.includes('emoji')) db.exec("ALTER TABLE member_books ADD COLUMN emoji TEXT NOT NULL DEFAULT ''");
@@ -173,6 +184,10 @@ if (!rewardCols.includes('status')) {
   db.exec("ALTER TABLE rewards ADD COLUMN status TEXT NOT NULL DEFAULT 'approved'");
   db.exec("UPDATE rewards SET status = CASE WHEN active = 0 THEN 'archived' ELSE 'approved' END");
 }
+
+// --- migration: reward scope (everyone | household) ---
+if (!rewardCols.includes('scope')) db.exec("ALTER TABLE rewards ADD COLUMN scope TEXT NOT NULL DEFAULT 'everyone'");
+if (!rewardCols.includes('household_id')) db.exec('ALTER TABLE rewards ADD COLUMN household_id INTEGER REFERENCES households(id)');
 
 // --- one-time bootstrap: seed a single admin on a brand-new database ---
 // (real members are created from the admin portal; the `seeded` flag means
@@ -191,6 +206,22 @@ if (!db.prepare("SELECT 1 FROM meta WHERE key = 'seeded'").get()) {
 if (db.prepare('SELECT COUNT(*) AS n FROM members').get().n > 0
     && db.prepare("SELECT COUNT(*) AS n FROM members WHERE role='admin'").get().n === 0) {
   db.exec("UPDATE members SET role='admin' WHERE id=(SELECT MIN(id) FROM members)");
+}
+
+// --- bootstrap: one default "Home" household; everyone defaults into it (nothing changes until a 2nd is added) ---
+if (!db.prepare("SELECT 1 FROM meta WHERE key = 'households_seeded'").get()) {
+  if (db.prepare('SELECT COUNT(*) AS n FROM households').get().n === 0) {
+    const adminId = db.prepare("SELECT id FROM members WHERE role='admin' ORDER BY id LIMIT 1").get()?.id ?? null;
+    const info = db.prepare('INSERT INTO households (name, color, lead_member_id) VALUES (?, ?, ?)').run('Home', '#E0785A', adminId);
+    db.prepare('UPDATE members SET household_id = ? WHERE household_id IS NULL').run(info.lastInsertRowid);
+    console.log('[bookcoin] seeded default "Home" household and assigned all members');
+  }
+  db.prepare("INSERT INTO meta (key, value) VALUES ('households_seeded', '1')").run();
+}
+// safety net: any member missing a household joins the lowest-id one (new members get assigned at creation)
+{
+  const hh = db.prepare('SELECT id FROM households ORDER BY id LIMIT 1').get();
+  if (hh) db.prepare('UPDATE members SET household_id = ? WHERE household_id IS NULL').run(hh.id);
 }
 
 // --- seed starter quests ---

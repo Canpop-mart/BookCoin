@@ -51,12 +51,16 @@ export const api = {
   cancelRedemption: (id) => req(`/redemptions/${id}/cancel`, { method: 'POST' }),
   lists: () => req('/lists'),
   genres: () => req('/genres'),
+  households: () => req('/households'),
 
   admin: {
     members: () => req('/admin/members'),
     createMember: (b) => req('/admin/members', { method: 'POST', body: b }),
     updateMember: (id, b) => req(`/admin/members/${id}`, { method: 'PATCH', body: b }),
     deleteMember: (id) => req(`/admin/members/${id}`, { method: 'DELETE' }),
+    createHousehold: (b) => req('/admin/households', { method: 'POST', body: b }),
+    updateHousehold: (id, b) => req(`/admin/households/${id}`, { method: 'PATCH', body: b }),
+    deleteHousehold: (id) => req(`/admin/households/${id}`, { method: 'DELETE' }),
     quests: () => req('/admin/quests'),
     createQuest: (b) => req('/admin/quests', { method: 'POST', body: b }),
     updateQuest: (id, b) => req(`/admin/quests/${id}`, { method: 'PATCH', body: b }),

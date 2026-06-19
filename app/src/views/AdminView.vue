@@ -17,9 +17,11 @@ const redemptions = ref([]);
 const claims = ref([]);
 const lists = ref([]);
 const genres = ref([]);
+const households = ref([]);
 
 const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
-const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' });
+const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '', householdId: null });
+const hForm = reactive({ id: null, name: '', color: '#E0785A' });
 const qForm = reactive({ id: null, title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
 const rForm = reactive({ id: null, name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 });
 const lForm = reactive({ id: null, name: '', description: '' });
@@ -31,12 +33,14 @@ const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['
 const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
 const liveRewards = computed(() => rewards.value.filter((r) => r.status !== 'pending'));
 const pendingCount = computed(() => claims.value.length + pendingRewards.value.length);
-const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']];
+const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['households', 'Households'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']];
+
+const householdName = (id) => households.value.find((h) => h.id === id)?.name || '';
 
 async function load() {
   try {
-    [members.value, quests.value, rewards.value, redemptions.value, claims.value, lists.value, genres.value] = await Promise.all([
-      api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(), api.lists(), api.admin.genres(),
+    [members.value, quests.value, rewards.value, redemptions.value, claims.value, lists.value, genres.value, households.value] = await Promise.all([
+      api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(), api.lists(), api.admin.genres(), api.households(),
     ]);
     for (const l of lists.value) if (!bookInput[l.id]) bookInput[l.id] = { title: '', author: '' };
   } catch (e) {
@@ -57,15 +61,34 @@ function removeGenre(g) {
   act(() => api.admin.deleteGenre(g.id));
 }
 
-function resetMember() { Object.assign(mForm, { id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '' }); }
+// --- households ---
+function resetHousehold() { Object.assign(hForm, { id: null, name: '', color: '#E0785A' }); }
+function editHousehold(h) { Object.assign(hForm, { id: h.id, name: h.name, color: h.color }); }
+async function saveHousehold() {
+  if (!hForm.name.trim()) { toast.value = 'Name is required'; return; }
+  const body = { name: hForm.name.trim(), color: hForm.color };
+  await act(() => hForm.id ? api.admin.updateHousehold(hForm.id, body) : api.admin.createHousehold(body));
+  toast.value = hForm.id ? 'Household saved' : 'Household added';
+  resetHousehold();
+}
+function removeHousehold(h) {
+  if (!confirm(`Delete the "${h.name}" household?`)) return;
+  act(() => api.admin.deleteHousehold(h.id));
+}
+async function setLead(h, leadMemberId) {
+  await act(() => api.admin.updateHousehold(h.id, { leadMemberId: leadMemberId || null }));
+}
+const membersOf = (hid) => members.value.filter((m) => m.householdId === hid);
+
+function resetMember() { Object.assign(mForm, { id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '', householdId: households.value[0]?.id ?? null }); }
 function editMember(m) {
-  Object.assign(mForm, { id: m.id, name: m.name, pin: '', role: m.role, goalHours: Math.round(m.monthlyGoalMinutes / 60 * 2) / 2, color: m.color });
+  Object.assign(mForm, { id: m.id, name: m.name, pin: '', role: m.role, goalHours: Math.round(m.monthlyGoalMinutes / 60 * 2) / 2, color: m.color, householdId: m.householdId ?? null });
 }
 async function saveMember() {
   if (!mForm.name.trim()) { toast.value = 'Name is required'; return; }
   if (!mForm.id && !mForm.pin) { toast.value = 'Set a PIN'; return; }
   const wasSelf = mForm.id === store.member.id;
-  const body = { name: mForm.name.trim(), role: mForm.role, monthlyGoalMinutes: Math.round(mForm.goalHours * 60), color: mForm.color || undefined };
+  const body = { name: mForm.name.trim(), role: mForm.role, monthlyGoalMinutes: Math.round(mForm.goalHours * 60), color: mForm.color || undefined, householdId: mForm.householdId ?? undefined };
   if (mForm.pin) body.pin = mForm.pin;
   try {
     if (mForm.id) await api.admin.updateMember(mForm.id, body);
@@ -165,9 +188,10 @@ async function addBook(l) {
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div v-for="m in members" :key="m.id" class="card row" style="padding:10px 13px;gap:10px;">
             <Avatar :member="m" :size="30" />
-            <div style="flex:1;">
-              <span style="font-weight:600;">{{ m.name }}</span>
-              <span v-if="m.role === 'admin'" class="chip" style="padding:2px 9px;margin-left:6px;background:var(--gold-bg);color:var(--gold-d);">admin</span>
+            <div style="flex:1;min-width:0;">
+              <div><span style="font-weight:600;">{{ m.name }}</span>
+              <span v-if="m.role === 'admin'" class="chip" style="padding:2px 9px;margin-left:6px;background:var(--gold-bg);color:var(--gold-d);">admin</span></div>
+              <div class="sub" v-if="householdName(m.householdId)"><i class="ti ti-home" aria-hidden="true"></i> {{ householdName(m.householdId) }}</div>
             </div>
             <button class="chip" aria-label="edit" @click="editMember(m)"><i class="ti ti-edit" aria-hidden="true"></i></button>
             <button class="chip" aria-label="delete" @click="removeMember(m)"><i class="ti ti-trash" aria-hidden="true"></i></button>
@@ -181,12 +205,56 @@ async function addBook(l) {
             <select v-model="mForm.role" style="flex:1;"><option value="member">Member</option><option value="admin">Admin</option></select>
             <input v-model.number="mForm.goalHours" type="number" min="0.5" step="0.5" style="width:108px;" placeholder="Goal (h)" />
           </div>
+          <label class="sub">Household
+            <select v-model.number="mForm.householdId">
+              <option v-for="h in households" :key="h.id" :value="h.id">{{ h.name }}</option>
+            </select>
+          </label>
           <div class="row" style="gap:8px;flex-wrap:wrap;">
             <button v-for="c in COLORS" :key="c" aria-label="colour" @click="mForm.color = c"
               :style="{ background: c, width: '28px', height: '28px', borderRadius: '50%', cursor: 'pointer', padding: 0, border: mForm.color === c ? '2px solid var(--ink)' : '2px solid transparent' }"></button>
           </div>
           <button class="btn" @click="saveMember"><i class="ti ti-check" aria-hidden="true"></i> {{ mForm.id ? 'Save member' : 'Add member' }}</button>
           <button v-if="mForm.id" class="chip" @click="resetMember">Cancel</button>
+        </div>
+      </template>
+
+      <!-- HOUSEHOLDS -->
+      <template v-if="tab === 'households'">
+        <p class="sub">Households group friends &amp; family without separating them — everyone still shares the app. Each can have a lead for day-to-day.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div v-for="h in households" :key="h.id" class="card" style="display:flex;flex-direction:column;gap:9px;">
+            <div class="row" style="gap:10px;">
+              <span class="av" :style="{ background: h.color, width: '30px', height: '30px' }"><i class="ti ti-home" aria-hidden="true"></i></span>
+              <div style="flex:1;min-width:0;">
+                <span style="font-weight:600;">{{ h.name }}</span>
+                <span class="sub" style="margin-left:6px;">{{ h.memberCount }} member{{ h.memberCount === 1 ? '' : 's' }}</span>
+              </div>
+              <button class="chip" aria-label="edit" @click="editHousehold(h)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+              <button class="chip" aria-label="delete" @click="removeHousehold(h)"><i class="ti ti-trash" aria-hidden="true"></i></button>
+            </div>
+            <label class="sub">Lead
+              <select @change="setLead(h, Number($event.target.value) || null)">
+                <option value="" :selected="!h.leadMemberId">No lead</option>
+                <option v-for="m in membersOf(h.id)" :key="m.id" :value="m.id" :selected="m.id === h.leadMemberId">{{ m.name }}</option>
+              </select>
+            </label>
+            <div v-if="membersOf(h.id).length" class="row" style="gap:6px;flex-wrap:wrap;">
+              <span v-for="m in membersOf(h.id)" :key="m.id" class="chip" style="padding:3px 9px;gap:6px;">
+                <Avatar :member="m" :size="18" /> {{ m.name }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="display:flex;flex-direction:column;gap:9px;">
+          <div class="sub">{{ hForm.id ? 'Edit household' : 'Add household' }}</div>
+          <input v-model="hForm.name" placeholder="Household name (e.g. The Riveras)" />
+          <div class="row" style="gap:8px;flex-wrap:wrap;">
+            <button v-for="c in COLORS" :key="c" aria-label="colour" @click="hForm.color = c"
+              :style="{ background: c, width: '28px', height: '28px', borderRadius: '50%', cursor: 'pointer', padding: 0, border: hForm.color === c ? '2px solid var(--ink)' : '2px solid transparent' }"></button>
+          </div>
+          <button class="btn" @click="saveHousehold"><i class="ti ti-check" aria-hidden="true"></i> {{ hForm.id ? 'Save household' : 'Add household' }}</button>
+          <button v-if="hForm.id" class="chip" @click="resetHousehold">Cancel</button>
         </div>
       </template>
 
