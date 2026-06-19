@@ -75,9 +75,6 @@ function removeHousehold(h) {
   if (!confirm(`Delete the "${h.name}" household?`)) return;
   act(() => api.admin.deleteHousehold(h.id));
 }
-async function setLead(h, leadMemberId) {
-  await act(() => api.admin.updateHousehold(h.id, { leadMemberId: leadMemberId || null }));
-}
 const membersOf = (hid) => members.value.filter((m) => m.householdId === hid);
 
 function resetMember() { Object.assign(mForm, { id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '', householdId: households.value[0]?.id ?? null }); }
@@ -221,7 +218,7 @@ async function addBook(l) {
 
       <!-- HOUSEHOLDS -->
       <template v-if="tab === 'households'">
-        <p class="sub">Households group friends &amp; family without separating them — everyone still shares the app. Each can have a lead for day-to-day.</p>
+        <p class="sub">Households just tidy the sign-in screen — everyone shares one leaderboard, and you choose who each reward is for. Handy once you've got a few families; skip it if everyone's one group.</p>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div v-for="h in households" :key="h.id" class="card" style="display:flex;flex-direction:column;gap:9px;">
             <div class="row" style="gap:10px;">
@@ -233,12 +230,6 @@ async function addBook(l) {
               <button class="chip" aria-label="edit" @click="editHousehold(h)"><i class="ti ti-edit" aria-hidden="true"></i></button>
               <button class="chip" aria-label="delete" @click="removeHousehold(h)"><i class="ti ti-trash" aria-hidden="true"></i></button>
             </div>
-            <label class="sub">Lead
-              <select @change="setLead(h, Number($event.target.value) || null)">
-                <option value="" :selected="!h.leadMemberId">No lead</option>
-                <option v-for="m in membersOf(h.id)" :key="m.id" :value="m.id" :selected="m.id === h.leadMemberId">{{ m.name }}</option>
-              </select>
-            </label>
             <div v-if="membersOf(h.id).length" class="row" style="gap:6px;flex-wrap:wrap;">
               <span v-for="m in membersOf(h.id)" :key="m.id" class="chip" style="padding:3px 9px;gap:6px;">
                 <Avatar :member="m" :size="18" /> {{ m.name }}

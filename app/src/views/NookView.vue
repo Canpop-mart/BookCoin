@@ -8,30 +8,21 @@ import { fmtDuration, daysLeftInMonth, monthName } from '../data';
 const router = useRouter();
 const daysLeft = daysLeftInMonth();
 const period = ref('month');
-const scope = ref('');           // '' = everyone, else a household id — a filter, not a separate board
 const data = ref(null);
-const households = ref([]);
 const lastResults = ref(null);
 
 async function load() { data.value = await api.leaderboard(period.value); }
 onMounted(async () => {
   await load();
-  try { households.value = await api.households(); } catch {}
   try { const c = await api.ceremony(); if (c.summary) lastResults.value = c.summary.month; } catch {}
 });
 function setPeriod(p) { if (p !== period.value) { period.value = p; load(); } }
 
+// one shared board for everyone — households don't split the leaderboard
 const rows = computed(() => data.value?.rows || []);
-const pickable = computed(() => households.value.filter((h) => h.memberCount > 0));
-const multiHousehold = computed(() => pickable.value.length > 1);
-// filtering to a household re-ranks within that household (a focused lens, not a new board)
-const view = computed(() => {
-  const list = scope.value === '' ? rows.value : rows.value.filter((r) => r.householdId === scope.value);
-  return list.map((r, i) => ({ ...r, rank: i + 1 }));
-});
-const myIndex = computed(() => view.value.findIndex((r) => r.memberId === store.member.id));
-const me = computed(() => view.value[myIndex.value]);
-const ahead = computed(() => (myIndex.value > 0 ? view.value[myIndex.value - 1] : null));
+const myIndex = computed(() => rows.value.findIndex((r) => r.memberId === store.member.id));
+const me = computed(() => rows.value[myIndex.value]);
+const ahead = computed(() => (myIndex.value > 0 ? rows.value[myIndex.value - 1] : null));
 const gapAhead = computed(() => (ahead.value ? Math.max(0, ahead.value.minutes - (me.value?.minutes || 0)) : 0));
 const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
 </script>
@@ -48,14 +39,8 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
       <button class="chip" :class="{ on: period === 'all' }" style="flex:1;justify-content:center;" @click="setPeriod('all')">All time</button>
     </div>
 
-    <div v-if="multiHousehold" class="row" style="gap:7px;flex-wrap:wrap;">
-      <button class="chip" :class="{ on: scope === '' }" @click="scope = ''"><i class="ti ti-users" aria-hidden="true"></i> Everyone</button>
-      <button v-for="h in pickable" :key="h.id" class="chip" :class="{ on: scope === h.id }" @click="scope = h.id"><i class="ti ti-home" aria-hidden="true"></i> {{ h.name }}</button>
-    </div>
-
-    <div v-if="!view.length" class="card sub">No one here yet.</div>
     <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
-      <div v-for="r in view" :key="r.memberId" class="card row" style="padding:11px 13px;"
+      <div v-for="r in rows" :key="r.memberId" class="card row" style="padding:11px 13px;"
         :style="r.memberId === store.member.id ? { background: 'var(--blush-bg)', borderColor: '#F2D2C5' } : {}">
         <span class="av" style="width:28px;height:28px;font-size:12px;"
           :style="r.rank === 1 && r.minutes > 0 ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#F0E0C8', color: '#86735A' }">

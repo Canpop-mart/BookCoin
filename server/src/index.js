@@ -37,6 +37,17 @@ const householdsWithCounts = () => db.prepare(`
   FROM households h LEFT JOIN members lead ON lead.id = h.lead_member_id
   ORDER BY h.id`).all();
 
+// reward audience (the specific members a 'people'-scoped reward is for)
+const audienceIds = (rewardId) =>
+  db.prepare('SELECT member_id AS id FROM reward_audience WHERE reward_id = ?').all(rewardId).map((r) => r.id);
+const audienceNames = (rewardId) =>
+  db.prepare('SELECT m.name FROM reward_audience ra JOIN members m ON m.id = ra.member_id WHERE ra.reward_id = ? ORDER BY m.id').all(rewardId).map((r) => r.name);
+const setAudience = (rewardId, ids) => {
+  db.prepare('DELETE FROM reward_audience WHERE reward_id = ?').run(rewardId);
+  const ins = db.prepare('INSERT OR IGNORE INTO reward_audience (reward_id, member_id) VALUES (?, ?)');
+  for (const id of ids) if (db.prepare('SELECT 1 FROM members WHERE id = ?').get(id)) ins.run(rewardId, id);
+};
+
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
 const nowStr = () => new Date().toISOString().slice(0, 19).replace('T', ' '); // matches SQLite datetime('now')
 const safeParse = (s) => { try { return JSON.parse(s); } catch { return []; } };
@@ -506,16 +517,16 @@ api.post('/quests/:id/claim', (c) => {
 // ---- rewards / shop ----
 api.get('/rewards', (c) => {
   const m = c.get('member');
-  // a member sees everyone-scoped rewards + rewards scoped to their own household
+  // a member sees everyone-scoped rewards + 'people' rewards they're an audience of
   const rewards = db.prepare(`
     SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.owner_cut AS ownerCut,
-           r.owner_id AS ownerId, r.scope, r.household_id AS householdId, hh.name AS householdName,
+           r.owner_id AS ownerId, r.scope,
            o.name AS ownerName, o.initials AS ownerInitials, o.color AS ownerColor, o.avatar AS ownerAvatar
     FROM rewards r
     LEFT JOIN members o ON o.id = r.owner_id
-    LEFT JOIN households hh ON hh.id = r.household_id
-    WHERE r.status = 'approved' AND (r.scope = 'everyone' OR r.household_id = ?)
-    ORDER BY r.cost_coins`).all(m.household_id ?? -1);
+    WHERE r.status = 'approved'
+      AND (r.scope = 'everyone' OR EXISTS (SELECT 1 FROM reward_audience ra WHERE ra.reward_id = r.id AND ra.member_id = ?))
+    ORDER BY r.cost_coins`).all(m.id);
   return c.json({ balance: balance(m.id), rewards });
 });
 
@@ -528,16 +539,13 @@ api.post('/rewards', async (c) => {
   const stock = b.stock === '' || b.stock == null ? null : Math.max(0, Math.round(Number(b.stock)));
   const cut = OWNER_CUT_PCT; // fixed; members don't set their own cut
   const status = m.role === 'admin' ? 'approved' : 'pending';
-  // scope defaults to the offerer's own household; "everyone" makes it global
-  let scope = b.scope === 'everyone' ? 'everyone' : 'household';
-  let householdId = null;
-  if (scope === 'household') {
-    householdId = m.household_id ?? null;
-    if (!householdId) scope = 'everyone'; // no household → just make it global
-  }
+  // 'people' = only the chosen members can see/buy it; empty list falls back to everyone
+  const ids = Array.isArray(b.audience) ? b.audience.map(Number).filter(Number.isInteger) : [];
+  const scope = b.scope === 'people' && ids.length ? 'people' : 'everyone';
   const info = db.prepare(
-    'INSERT INTO rewards (name, description, cost_coins, tier, stock, owner_id, owner_cut, status, scope, household_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(b.name.trim(), b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock, m.id, cut, status, scope, householdId);
+    'INSERT INTO rewards (name, description, cost_coins, tier, stock, owner_id, owner_cut, status, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(b.name.trim(), b.description || '', Math.max(0, Math.round(Number(b.costCoins) || 0)), tier, stock, m.id, cut, status, scope);
+  if (scope === 'people') setAudience(Number(info.lastInsertRowid), ids);
   return c.json({ id: Number(info.lastInsertRowid), status });
 });
 
@@ -546,6 +554,8 @@ api.post('/rewards/:id/redeem', (c) => {
   const r = db.prepare("SELECT * FROM rewards WHERE id = ? AND status = 'approved'").get(Number(c.req.param('id')));
   if (!r) return c.json({ error: 'Reward not found' }, 404);
   if (r.owner_id === m.id) return c.json({ error: "That's your own reward" }, 400);
+  if (r.scope === 'people' && !db.prepare('SELECT 1 FROM reward_audience WHERE reward_id = ? AND member_id = ?').get(r.id, m.id))
+    return c.json({ error: 'This reward isn\'t for you' }, 403);
   if (balance(m.id) < r.cost_coins) return c.json({ error: 'Not enough coins yet' }, 400);
   if (r.stock != null && r.stock <= 0) return c.json({ error: 'Out of stock' }, 400);
 
@@ -578,10 +588,9 @@ api.get('/me/redemptions', (c) => {
 // rewards I offer + redemptions of mine waiting for me to deliver
 api.get('/me/offers', (c) => {
   const m = c.get('member');
-  const mine = db.prepare(`
-    SELECT r.id, r.name, r.cost_coins AS costCoins, r.status, r.owner_cut AS ownerCut, r.scope, hh.name AS householdName
-    FROM rewards r LEFT JOIN households hh ON hh.id = r.household_id
-    WHERE r.owner_id = ? AND r.status != 'archived' ORDER BY r.id DESC`).all(m.id);
+  const mine = db.prepare(
+    "SELECT id, name, cost_coins AS costCoins, status, owner_cut AS ownerCut, scope FROM rewards WHERE owner_id = ? AND status != 'archived' ORDER BY id DESC"
+  ).all(m.id).map((r) => ({ ...r, audience: r.scope === 'people' ? audienceNames(r.id) : [] }));
   const toFulfill = db.prepare(`
     SELECT rd.id, rd.cost_coins AS costCoins, rd.created_at AS createdAt, r.name, r.owner_cut AS ownerCut,
            mem.name AS member, mem.initials, mem.color, mem.avatar
@@ -641,12 +650,12 @@ api.delete('/admin/quests/:id', (c) => {
 api.get('/admin/rewards', (c) =>
   c.json(db.prepare(`
     SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.status, r.owner_cut AS ownerCut,
-           r.scope, r.household_id AS householdId, hh.name AS householdName, o.name AS ownerName
+           r.scope, o.name AS ownerName
     FROM rewards r
     LEFT JOIN members o ON o.id = r.owner_id
-    LEFT JOIN households hh ON hh.id = r.household_id
     WHERE r.status NOT IN ('archived', 'denied')
-    ORDER BY (r.status = 'pending') DESC, r.cost_coins`).all()));
+    ORDER BY (r.status = 'pending') DESC, r.cost_coins`).all()
+    .map((r) => ({ ...r, audience: r.scope === 'people' ? audienceNames(r.id) : [] }))));
 
 api.post('/admin/rewards/:id/approve', async (c) => {
   const id = Number(c.req.param('id'));
@@ -674,14 +683,14 @@ api.patch('/admin/rewards/:id', async (c) => {
   const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : r.tier;
   let stock = r.stock;
   if (b.stock !== undefined) stock = (b.stock === '' || b.stock == null) ? null : Math.max(0, Math.round(Number(b.stock) || 0));
-  let scope = r.scope, householdId = r.household_id;
-  if (b.scope === 'everyone') { scope = 'everyone'; householdId = null; }
-  else if (b.scope === 'household') {
-    const hh = validHouseholdId(b.householdId);
-    if (hh) { scope = 'household'; householdId = hh; }
+  let scope = r.scope;
+  if (b.scope === 'everyone') { scope = 'everyone'; setAudience(id, []); }
+  else if (b.scope === 'people') {
+    const ids = Array.isArray(b.audience) ? b.audience.map(Number).filter(Number.isInteger) : [];
+    if (ids.length) { scope = 'people'; setAudience(id, ids); }
   }
-  db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, tier = ?, stock = ?, owner_cut = ?, scope = ?, household_id = ? WHERE id = ?')
-    .run(name, desc, cost, tier, stock, OWNER_CUT_PCT, scope, householdId, id);
+  db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, tier = ?, stock = ?, owner_cut = ?, scope = ?, household_id = NULL WHERE id = ?')
+    .run(name, desc, cost, tier, stock, OWNER_CUT_PCT, scope, id);
   return c.json({ ok: true });
 });
 
@@ -834,7 +843,6 @@ api.delete('/admin/households/:id', (c) => {
   if (db.prepare('SELECT COUNT(*) AS n FROM households').get().n <= 1) return c.json({ error: 'Keep at least one household' }, 400);
   if (db.prepare('SELECT COUNT(*) AS n FROM members WHERE household_id = ?').get(id).n > 0)
     return c.json({ error: 'Move its members out first' }, 400);
-  db.prepare("UPDATE rewards SET scope = 'everyone', household_id = NULL WHERE household_id = ?").run(id);
   db.prepare('DELETE FROM households WHERE id = ?').run(id);
   return c.body(null, 204);
 });
