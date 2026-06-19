@@ -1,8 +1,8 @@
 <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#EC8A63"/>
-      <stop offset="1" stop-color="#D97F2E"/>
+      <stop offset="0" stop-color="#B7BEEF"/>
+      <stop offset="1" stop-color="#8E97E6"/>
     </linearGradient>
     <linearGradient id="coin" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#FBDD86"/>
@@ -10,13 +10,29 @@
     </linearGradient>
   </defs>
   <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="330" fill="url(#coin)" stroke="#B9791A" stroke-width="20"/>
-  <circle cx="512" cy="512" r="276" fill="none" stroke="#C58A1E" stroke-width="12" opacity="0.45"/>
-  <path d="M512 432 C 430 396, 358 398, 318 414 L 318 596 C 364 578, 444 578, 512 610 Z" fill="#FFFBF2"/>
-  <path d="M512 432 C 594 396, 666 398, 706 414 L 706 596 C 660 578, 580 578, 512 610 Z" fill="#FBEFD9"/>
-  <path d="M512 432 L 512 610" stroke="#D98F4F" stroke-width="14" stroke-linecap="round"/>
-  <g stroke="#E6B98A" stroke-width="11" stroke-linecap="round">
-    <path d="M372 460 H 470"/><path d="M372 506 H 470"/><path d="M372 552 H 462"/>
-    <path d="M554 460 H 652"/><path d="M554 506 H 652"/><path d="M562 552 H 652"/>
+  <g fill="#FFF6E6" opacity="0.5">
+    <path d="M210 235 Q210 263 238 263 Q210 263 210 291 Q210 263 182 263 Q210 263 210 235 Z"/>
+    <path d="M820 255 Q820 279 844 279 Q820 279 820 303 Q820 279 796 279 Q820 279 820 255 Z"/>
+    <path d="M762 158 Q762 172 776 172 Q762 172 762 186 Q762 172 748 172 Q762 172 762 158 Z"/>
   </g>
+  <circle cx="512" cy="420" r="290" fill="url(#coin)" stroke="#B9791A" stroke-width="18"/>
+  <circle cx="512" cy="420" r="246" fill="none" stroke="#C58A1E" stroke-width="10" opacity="0.35"/>
+  <ellipse cx="430" cy="318" rx="118" ry="74" fill="#FFFFFF" opacity="0.18"/>
+  <g fill="#4A3F35">
+    <ellipse cx="440" cy="406" rx="26" ry="34"/>
+    <ellipse cx="584" cy="406" rx="26" ry="34"/>
+  </g>
+  <circle cx="450" cy="393" r="9" fill="#fff"/>
+  <circle cx="594" cy="393" r="9" fill="#fff"/>
+  <g fill="#F1A88C" opacity="0.6"><circle cx="388" cy="460" r="30"/><circle cx="636" cy="460" r="30"/></g>
+  <path d="M466 460 Q 512 502 558 460" fill="none" stroke="#4A3F35" stroke-width="15" stroke-linecap="round"/>
+  <path d="M512 575 C 430 545, 340 543, 272 557 L 272 760 C 348 746, 446 752, 512 788 Z" fill="#FFFBF2" stroke="#E2B88E" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M512 575 C 594 545, 684 543, 752 557 L 752 760 C 676 746, 578 752, 512 788 Z" fill="#FBEFD9" stroke="#E2B88E" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M512 575 L 512 788" stroke="#D98F4F" stroke-width="13" stroke-linecap="round"/>
+  <g stroke="#E6B98A" stroke-width="10" stroke-linecap="round">
+    <path d="M330 602 H 462"/><path d="M322 648 H 462"/><path d="M326 694 H 456"/>
+    <path d="M562 602 H 694"/><path d="M562 648 H 702"/><path d="M568 694 H 698"/>
+  </g>
+  <circle cx="300" cy="556" r="44" fill="url(#coin)" stroke="#B9791A" stroke-width="14"/>
+  <circle cx="724" cy="556" r="44" fill="url(#coin)" stroke="#B9791A" stroke-width="14"/>
 </svg>

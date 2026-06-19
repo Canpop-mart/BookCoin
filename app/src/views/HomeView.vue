@@ -54,8 +54,8 @@ function ago(ts) {
   <div class="screen stagger" v-if="profile">
     <div class="row" style="justify-content:space-between;">
       <div class="row" style="gap:7px;"><i class="ti ti-book-2" style="color:var(--terra);font-size:22px;" aria-hidden="true"></i><span class="h">BookCoin</span></div>
-      <span class="av" :style="{ background: store.member.color }" style="cursor:pointer;position:relative;" @click="router.push(`/profile/${store.member.id}`)">
-        {{ store.member.initials }}
+      <span style="cursor:pointer;position:relative;flex-shrink:0;" @click="router.push(`/profile/${store.member.id}`)">
+        <Avatar :member="store.member" :size="34" />
         <span v-if="store.member.emblem" style="position:absolute;right:-3px;bottom:-3px;width:18px;height:18px;font-size:11px;background:var(--card);border:1px solid var(--line);border-radius:50%;display:flex;align-items:center;justify-content:center;">{{ store.member.emblem }}</span>
       </span>
     </div>
@@ -124,7 +124,7 @@ function ago(ts) {
     <div class="card" style="display:flex;flex-direction:column;gap:11px;">
       <div v-for="r in top3" :key="r.memberId" class="row" style="gap:10px;">
         <span class="sub" style="width:12px;">{{ r.rank }}</span>
-        <span class="av" style="width:26px;height:26px;font-size:11px;" :style="{ background: r.color }">{{ r.initials }}</span>
+        <Avatar :member="r" :size="26" />
         <span style="flex:1;font-weight:600;font-size:14px;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></span>
         <span class="sub">{{ fmtDuration(r.minutes) }}</span>
       </div>
@@ -134,7 +134,7 @@ function ago(ts) {
       <div class="sub">Recent activity</div>
       <div class="card" style="display:flex;flex-direction:column;gap:13px;">
         <div v-for="a in activity.slice(0, 5)" :key="a.id" class="row" style="gap:10px;align-items:flex-start;">
-          <span class="av" style="width:28px;height:28px;font-size:11px;" :style="{ background: a.color }">{{ a.initials }}</span>
+          <Avatar :member="a" :size="28" />
           <div style="flex:1;font-size:14px;line-height:1.4;">
             <span style="font-weight:600;">{{ a.name }}</span> read {{ fmtDuration(a.minutes) }}<span v-if="a.title"> of {{ a.title }}</span>
             <div class="sub">{{ mediumLabel(a.medium) }} · {{ ago(a.createdAt) }}</div>

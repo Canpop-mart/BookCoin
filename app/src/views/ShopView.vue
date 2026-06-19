@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { api } from '../api';
 import { store } from '../store';
 import { usd } from '../data';
@@ -10,17 +10,21 @@ const offers = ref({ mine: [], toFulfill: [] });
 const busy = ref(false);
 const toast = ref('');
 const burst = ref(false);
-const view = ref('shop');
+const view = ref('store');
 const menuOpen = ref(false);
 const showOffer = ref(false);
-const form = reactive({ name: '', description: '', costCoins: 50, ownerCut: 50, tier: 'mid' });
+const form = reactive({ name: '', description: '', costCoins: 50, tier: 'mid' });
+
+const toDeliver = computed(() => offers.value.toFulfill.length);
+const VIEWS = { store: 'Store', offers: 'My offers', receipts: 'Purchases' };
+const viewLabel = computed(() => VIEWS[view.value]);
+function setView(v) { view.value = v; menuOpen.value = false; }
 
 async function load() {
   [data.value, redemptions.value, offers.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers()]);
+  store.setDeliveries(offers.value.toFulfill.length); // drives the nav badge
 }
 onMounted(load);
-
-function setView(v) { view.value = v; menuOpen.value = false; }
 
 const tier = {
   low: { bg: 'var(--sage-bg)', fg: 'var(--sage-d)' },
@@ -57,16 +61,18 @@ function submitOffer() {
       <div style="position:relative;">
         <button class="reward-switch" @click="menuOpen = !menuOpen">
           <i class="ti ti-gift" style="color:var(--terra);" aria-hidden="true"></i>
-          {{ view === 'shop' ? 'Shop' : 'My offers' }}
+          {{ viewLabel }}
           <i class="ti ti-chevron-down" style="font-size:15px;color:var(--ink2);" aria-hidden="true"></i>
+          <span v-if="view !== 'offers' && toDeliver" class="badge-dot">{{ toDeliver }}</span>
         </button>
         <template v-if="menuOpen">
           <div @click="menuOpen = false" style="position:fixed;inset:0;z-index:20;"></div>
           <div class="reward-menu">
-            <button @click="setView('shop')" :style="view === 'shop' ? { background: 'var(--cream)', fontWeight: 600 } : {}">Shop</button>
-            <button @click="setView('mine')" :style="view === 'mine' ? { background: 'var(--cream)', fontWeight: 600 } : {}">
-              My offers<span v-if="offers.toFulfill.length" style="margin-left:auto;color:var(--terra-d);">{{ offers.toFulfill.length }}</span>
+            <button @click="setView('store')" :style="view === 'store' ? { background: 'var(--cream)', fontWeight: 600 } : {}">Store</button>
+            <button @click="setView('offers')" :style="view === 'offers' ? { background: 'var(--cream)', fontWeight: 600 } : {}">
+              My offers<span v-if="toDeliver" style="margin-left:auto;color:var(--terra-d);font-weight:700;">{{ toDeliver }}</span>
             </button>
+            <button @click="setView('receipts')" :style="view === 'receipts' ? { background: 'var(--cream)', fontWeight: 600 } : {}">Purchases</button>
           </div>
         </template>
       </div>
@@ -74,17 +80,19 @@ function submitOffer() {
     </div>
     <p v-if="toast" class="sub pop-in" style="text-align:center;color:var(--gold-d);">{{ toast }}</p>
 
-    <!-- ============ SHOP ============ -->
-    <template v-if="view === 'shop'">
+    <!-- ============ STORE ============ -->
+    <template v-if="view === 'store'">
       <button class="chip" style="align-self:flex-start;" @click="showOffer = !showOffer"><i class="ti ti-plus" aria-hidden="true"></i> Offer a reward</button>
       <div v-if="showOffer" class="card" style="display:flex;flex-direction:column;gap:9px;">
         <input v-model="form.name" placeholder="What are you offering? (e.g. a drawing)" />
         <input v-model="form.description" placeholder="Description (optional)" />
         <div class="row" style="gap:8px;">
           <label class="sub" style="flex:1;">Price <input v-model.number="form.costCoins" type="number" min="0" /></label>
-          <label class="sub" style="flex:1;">Your cut % <input v-model.number="form.ownerCut" type="number" min="0" max="100" /></label>
+          <label class="sub" style="flex:1;">Tier
+            <select v-model="form.tier"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
+          </label>
         </div>
-        <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. You keep {{ Math.round(form.costCoins * form.ownerCut / 100) }} coins; the rest is spent.</div>
+        <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. When someone buys it you keep <strong style="color:var(--ink);">{{ Math.ceil((form.costCoins || 0) * 0.2) }}</strong> (20%); the rest is spent.</div>
         <button class="btn" :disabled="busy" @click="submitOffer"><i class="ti ti-check" aria-hidden="true"></i> {{ store.member.role === 'admin' ? 'Add reward' : 'Submit for approval' }}</button>
       </div>
 
@@ -99,7 +107,7 @@ function submitOffer() {
             <div style="font-weight:600;">{{ r.name }}</div>
             <div class="sub" v-if="r.description">{{ r.description }}</div>
             <div class="row" style="gap:6px;margin-top:4px;">
-              <span class="av" style="width:18px;height:18px;font-size:8px;" :style="{ background: r.ownerColor }">{{ r.ownerInitials }}</span>
+              <Avatar :avatar="r.ownerAvatar" :color="r.ownerColor" :initials="r.ownerInitials" :size="18" />
               <span class="sub">from {{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
             </div>
           </div>
@@ -113,16 +121,16 @@ function submitOffer() {
     </template>
 
     <!-- ============ MY OFFERS ============ -->
-    <template v-else>
-      <div v-if="!offers.toFulfill.length && !offers.mine.length && !redemptions.length" class="card sub">
-        Nothing here yet — redeem a reward or offer one of your own.
+    <template v-else-if="view === 'offers'">
+      <div v-if="!offers.toFulfill.length && !offers.mine.length" class="card sub">
+        You haven't offered any rewards yet — head to the Store to add one.
       </div>
 
       <template v-if="offers.toFulfill.length">
-        <div class="sub">To deliver</div>
-        <div v-for="rd in offers.toFulfill" :key="rd.id" class="card row" style="gap:10px;">
-          <span class="av" style="width:30px;height:30px;" :style="{ background: rd.color }">{{ rd.initials }}</span>
-          <div style="flex:1;"><div style="font-weight:600;">{{ rd.name }}</div><div class="sub">for {{ rd.member }} · you earn {{ Math.round(rd.costCoins * rd.ownerCut / 100) }}</div></div>
+        <div class="sub"><i class="ti ti-bell" style="color:var(--terra);" aria-hidden="true"></i> Someone bought yours — deliver it</div>
+        <div v-for="rd in offers.toFulfill" :key="rd.id" class="card row" style="gap:10px;background:#FFF7F3;border-color:#F2D2C5;">
+          <Avatar :member="rd" :size="30" />
+          <div style="flex:1;"><div style="font-weight:600;">{{ rd.name }}</div><div class="sub">for {{ rd.member }} · you earn {{ Math.ceil(rd.costCoins * 0.2) }}</div></div>
           <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" :disabled="busy" @click="run(() => api.fulfillRedemption(rd.id), 'Delivered!')"><i class="ti ti-check" aria-hidden="true"></i> Given</button>
           <button class="chip" :disabled="busy" @click="run(() => api.cancelRedemption(rd.id), 'Cancelled & refunded')"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
@@ -131,37 +139,45 @@ function submitOffer() {
       <template v-if="offers.mine.length">
         <div class="sub" style="margin-top:4px;">Listed by you</div>
         <div v-for="r in offers.mine" :key="r.id" class="card row" style="padding:11px 14px;gap:8px;">
-          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · {{ r.ownerCut }}% cut</span></div>
+          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }}</span></div>
           <span class="chip" :style="statusStyle(r.status)" style="padding:3px 10px;">{{ r.status }}</span>
           <button class="chip" :disabled="busy" @click="run(() => api.archiveReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
       </template>
+    </template>
 
-      <template v-if="redemptions.length">
-        <div class="sub" style="margin-top:4px;">Redeemed by you</div>
-        <div v-for="rd in redemptions" :key="rd.id" class="card row" style="justify-content:space-between;padding:11px 14px;">
-          <span>{{ rd.name }}</span>
-          <span class="chip" :style="statusStyle(rd.status)">{{ rd.status === 'requested' ? 'pending' : rd.status }}</span>
-        </div>
-      </template>
+    <!-- ============ RECEIPTS ============ -->
+    <template v-else>
+      <div v-if="!redemptions.length" class="card sub">Nothing bought yet — redeem a reward from the Store.</div>
+      <div v-for="rd in redemptions" :key="rd.id" class="card row" style="justify-content:space-between;padding:11px 14px;">
+        <span>{{ rd.name }}</span>
+        <span class="chip" :style="statusStyle(rd.status)">{{ rd.status === 'requested' ? 'pending' : rd.status }}</span>
+      </div>
     </template>
   </div>
 </template>
 
 <style scoped>
 .reward-switch {
-  display: flex; align-items: center; gap: 7px;
+  display: flex; align-items: center; gap: 7px; position: relative;
   background: none; border: none; cursor: pointer; padding: 0;
   font-family: 'Quicksand', sans-serif; font-size: 18px; font-weight: 600; color: var(--ink);
 }
 .reward-menu {
   position: absolute; top: 32px; left: 0; z-index: 21;
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-  padding: 6px; min-width: 160px; box-shadow: 0 8px 22px rgba(74, 63, 53, 0.14);
+  padding: 6px; min-width: 170px; box-shadow: 0 8px 22px rgba(74, 63, 53, 0.14);
 }
 .reward-menu button {
   display: flex; align-items: center; width: 100%; text-align: left;
   background: none; border: none; cursor: pointer; padding: 10px 12px;
   border-radius: 10px; font-family: inherit; font-size: 14px; color: var(--ink);
+}
+.badge-dot {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  background: var(--terra); color: #fff;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
 }
 </style>

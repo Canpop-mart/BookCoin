@@ -50,7 +50,7 @@ async function done() {
       <div v-for="s in podium" :key="s ? s.id : Math.random()" class="podium-col" :style="s ? {} : { visibility: 'hidden' }">
         <template v-if="s">
           <i v-if="s.rank === 1" class="ti ti-crown" style="color:var(--gold);font-size:24px;" aria-hidden="true"></i>
-          <span class="av" :style="{ background: s.color, width: s.rank === 1 ? '50px' : '42px', height: s.rank === 1 ? '50px' : '42px', fontSize: s.rank === 1 ? '17px' : '14px', border: '3px solid var(--card)' }">{{ s.initials }}</span>
+          <Avatar :member="s" :size="s.rank === 1 ? 50 : 42" style="border:3px solid var(--card);" />
           <div class="podium-name">{{ s.name }}</div>
           <div class="podium-block" :style="{ height: medal[s.rank].h + 'px', background: medal[s.rank].bg, color: medal[s.rank].fg }">
             <div class="podium-rank">{{ s.rank }}</div>

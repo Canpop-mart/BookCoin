@@ -8,7 +8,7 @@ const props = defineProps({
   variant: { type: String, default: 'wizard' }, // 'wizard' | 'owl' | 'fox' | 'cat'
 });
 
-const labels = { wizard: 'A wizard on a skateboard', owl: 'A cozy owl', fox: 'A friendly fox', cat: 'A reading cat' };
+const labels = { wizard: 'A wizard on a skateboard', owl: 'A cozy owl', fox: 'A friendly fox', cat: 'A reading cat', mushroom: 'A cheery mushroom' };
 
 // tap → play a one-shot trick (hop + spin), then settle back to idle
 const tricking = ref(false);
@@ -136,6 +136,30 @@ function doTrick() {
         <path d="M41 61 H 27" /><path d="M41 64 H 29" />
         <path d="M55 61 H 69" /><path d="M55 64 H 67" />
       </g>
+    </template>
+
+    <!-- ============ MUSHROOM (mushling) ============ -->
+    <template v-else-if="variant === 'mushroom'">
+      <path d="M40 100 v6 M40 100 l-3 6 M40 100 l3 6" stroke="#C8A06A" stroke-width="2.2" stroke-linecap="round" fill="none" />
+      <path d="M60 100 v6 M60 100 l-3 6 M60 100 l3 6" stroke="#C8A06A" stroke-width="2.2" stroke-linecap="round" fill="none" />
+      <path d="M37 64 C 35 86, 39 101, 50 101 C 61 101, 65 86, 63 64 Z" fill="#F5EAD6" />
+      <path d="M15 66 C 15 32, 30 28, 50 28 C 70 28, 85 32, 85 66 Z" fill="#D9534F" />
+      <rect x="18" y="62" width="64" height="7" rx="3.5" fill="#C8463F" />
+      <circle cx="33" cy="47" r="6" fill="#FBF3E7" />
+      <circle cx="58" cy="42" r="7.5" fill="#FBF3E7" />
+      <circle cx="71" cy="55" r="4.5" fill="#FBF3E7" />
+      <circle cx="46" cy="56" r="3.5" fill="#FBF3E7" />
+      <ellipse cx="40" cy="86" rx="3.5" ry="3" fill="#F2A9A0" opacity="0.6" />
+      <ellipse cx="60" cy="86" rx="3.5" ry="3" fill="#F2A9A0" opacity="0.6" />
+      <template v-if="eyes === 'happy'">
+        <path d="M40 81 q4 -4 8 0" fill="none" stroke="#4A3F35" stroke-width="2.2" stroke-linecap="round" />
+        <path d="M52 81 q4 -4 8 0" fill="none" stroke="#4A3F35" stroke-width="2.2" stroke-linecap="round" />
+      </template>
+      <template v-else>
+        <circle cx="44" cy="82" r="2.6" fill="#4A3F35" />
+        <circle cx="56" cy="82" r="2.6" fill="#4A3F35" />
+      </template>
+      <path d="M46 87 q4 4 8 0" stroke="#4A3F35" stroke-width="2" fill="none" stroke-linecap="round" />
     </template>
   </svg>
 </template>

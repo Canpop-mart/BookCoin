@@ -159,6 +159,7 @@ if (!memberCols.includes('theme')) db.exec("ALTER TABLE members ADD COLUMN theme
 if (!memberCols.includes('emblem')) db.exec("ALTER TABLE members ADD COLUMN emblem TEXT NOT NULL DEFAULT ''");
 if (!memberCols.includes('mascot')) db.exec("ALTER TABLE members ADD COLUMN mascot TEXT NOT NULL DEFAULT 'wizard'");
 if (!memberCols.includes('onboarded')) db.exec('ALTER TABLE members ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0');
+if (!memberCols.includes('avatar')) db.exec("ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT ''");
 
 // --- migration: custom emoji "cover" on bookshelf books ---
 const bookCols = db.prepare('PRAGMA table_info(member_books)').all().map((c) => c.name);

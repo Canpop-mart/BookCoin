@@ -47,6 +47,7 @@ onMounted(async () => {
   onNotificationTap(() => router.push('/reading')); // tapping the notification returns to the session
   if (!store.token) return;
   try { store.setMember((await api.me()).member); } catch {}
+  try { store.setDeliveries((await api.myOffers()).toFulfill.length); } catch {} // nav badge
   // surface a month-end ceremony the first time you open the app in a new month
   try {
     const { summary, seen } = await api.ceremony();

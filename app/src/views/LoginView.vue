@@ -65,13 +65,13 @@ async function submit() {
       <button v-for="m in members" :key="m.id" class="card"
         style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:9px;"
         @click="pick(m)">
-        <span class="av" style="width:42px;height:42px;font-size:15px;" :style="{ background: m.color }">{{ m.initials }}</span>
+        <Avatar :member="m" :size="42" />
         <span style="font-weight:600;">{{ m.name }}</span>
       </button>
     </div>
 
     <div v-else class="card" style="width:100%;display:flex;flex-direction:column;gap:13px;align-items:center;">
-      <span class="av" style="width:48px;height:48px;font-size:16px;" :style="{ background: selected.color }">{{ selected.initials }}</span>
+      <Avatar :member="selected" :size="48" />
       <div style="font-weight:600;">Hi {{ selected.name }}!</div>
       <input v-model="pin" type="password" inputmode="numeric" placeholder="Enter your PIN"
         style="text-align:center;letter-spacing:5px;" @keyup.enter="submit" />

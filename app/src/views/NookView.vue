@@ -46,12 +46,12 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
           <i v-if="r.rank === 1 && r.minutes > 0" class="ti ti-crown" aria-hidden="true"></i>
           <template v-else>{{ r.rank }}</template>
         </span>
-        <span class="av" style="width:30px;height:30px;" :style="{ background: r.color }">{{ r.initials }}</span>
-        <div style="flex:1;">
+        <Avatar :member="r" :size="30" />
+        <div style="flex:1;min-width:0;">
           <div style="font-weight:600;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></div>
-          <div class="sub">{{ fmtDuration(r.minutes) }}<span v-if="r.pages"> · {{ r.pages }} pages</span></div>
+          <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ r.coins }}{{ period === 'all' ? ' earned' : '' }}</div>
         </div>
-        <div class="sub" style="color:var(--gold-d);"><i class="ti ti-coin" aria-hidden="true"></i> {{ r.coins }}</div>
+        <div style="font-weight:700;font-family:'Quicksand';color:var(--ink);white-space:nowrap;">{{ fmtDuration(r.minutes) }}</div>
       </div>
     </div>
 

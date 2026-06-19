@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
 import { fmtDuration, MEDIUMS, bookSpine } from '../data';
+import { AVATARS } from '../avatars';
 import pkg from '../../package.json';
 
 const route = useRoute();
@@ -37,7 +38,7 @@ const THEMES = [
   { id: 'forest', label: 'Forest', dot: '#5E9E63' },
   { id: 'evening', label: 'Evening', dot: '#2B2723' },
 ];
-const MASCOTS = [{ id: 'wizard', label: 'Wizard' }, { id: 'owl', label: 'Owl' }, { id: 'fox', label: 'Fox' }, { id: 'cat', label: 'Cat' }];
+const MASCOTS = [{ id: 'wizard', label: 'Wizard' }, { id: 'owl', label: 'Owl' }, { id: 'fox', label: 'Fox' }, { id: 'cat', label: 'Cat' }, { id: 'mushroom', label: 'Mushroom' }];
 const EMBLEMS = ['', '📚', '🦉', '🐉', '🌙', '☕', '🪐', '🌟', '🐈', '🦄', '🎧', '🌸'];
 const AVATAR_COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const showCustomize = ref(false);
@@ -74,13 +75,13 @@ async function logout() {
 <template>
   <div class="screen stagger" v-if="data">
     <div class="row" style="gap:13px;">
-      <span class="av" style="width:54px;height:54px;font-size:19px;position:relative;" :style="{ background: data.member.color }">
-        {{ data.member.initials }}
+      <span style="position:relative;flex-shrink:0;">
+        <Avatar :member="data.member" :size="54" />
         <span v-if="data.member.emblem" style="position:absolute;right:-3px;bottom:-3px;width:23px;height:23px;font-size:14px;background:var(--card);border:1px solid var(--line);border-radius:50%;display:flex;align-items:center;justify-content:center;">{{ data.member.emblem }}</span>
       </span>
       <div style="flex:1;min-width:0;">
         <div class="h" style="font-size:21px;">{{ data.member.name }}</div>
-        <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ data.balance }} coins</div>
+        <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ data.balance }} coins<span v-if="data.lifetimeEarned != null" style="opacity:.75;"> · {{ data.lifetimeEarned }} earned all-time</span></div>
       </div>
       <button v-if="isMe" class="chip" aria-label="Customize" title="Customize" @click="showCustomize = !showCustomize"
         :style="showCustomize ? { background: 'var(--terra)', color: '#fff' } : {}">
@@ -136,7 +137,22 @@ async function logout() {
           </div>
         </div>
         <div>
-          <div class="sub" style="margin-bottom:8px;">Avatar colour</div>
+          <div class="sub" style="margin-bottom:8px;">Avatar</div>
+          <div class="row" style="gap:9px;flex-wrap:wrap;">
+            <button aria-label="Initials" @click="setAppearance({ avatar: '' })"
+              style="padding:2px;border-radius:50%;cursor:pointer;background:none;line-height:0;"
+              :style="{ border: !data.member.avatar ? '2px solid var(--terra)' : '2px solid transparent' }">
+              <Avatar :member="{ avatar: '', color: data.member.color, initials: data.member.initials }" :size="42" />
+            </button>
+            <button v-for="av in AVATARS" :key="av.id" :aria-label="av.label" @click="setAppearance({ avatar: av.id })"
+              style="padding:2px;border-radius:50%;cursor:pointer;background:none;line-height:0;"
+              :style="{ border: data.member.avatar === av.id ? '2px solid var(--terra)' : '2px solid transparent' }">
+              <Avatar :avatar="av.id" :size="42" />
+            </button>
+          </div>
+        </div>
+        <div>
+          <div class="sub" style="margin-bottom:8px;">Avatar colour <span style="opacity:.6;">(for initials)</span></div>
           <div class="row" style="gap:9px;flex-wrap:wrap;">
             <button v-for="c in AVATAR_COLORS" :key="c" aria-label="avatar colour" @click="setAppearance({ color: c })"
               :style="{ background: c, width: '30px', height: '30px', borderRadius: '50%', cursor: 'pointer', padding: 0, border: data.member.color === c ? '2px solid var(--ink)' : '2px solid transparent' }"></button>
