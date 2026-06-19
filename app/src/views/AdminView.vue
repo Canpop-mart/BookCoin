@@ -147,7 +147,7 @@ async function addBook(l) {
       <template v-if="tab === 'approvals'">
         <div v-if="!pendingCount" class="card sub">Nothing pending.</div>
         <div v-for="c in claims" :key="'c' + c.id" class="card row" style="gap:10px;">
-          <span class="av" style="width:30px;height:30px;" :style="{ background: c.color }">{{ c.initials }}</span>
+          <Avatar :avatar="c.avatar" :color="c.color" :initials="c.initials" :size="30" />
           <div style="flex:1;"><div style="font-weight:600;">{{ c.member }}</div><div class="sub">challenge: {{ c.title }} · +{{ c.rewardCoins }}</div></div>
           <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.approveClaim(c.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
           <button class="chip" @click="act(() => api.admin.rejectClaim(c.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
@@ -164,7 +164,7 @@ async function addBook(l) {
       <template v-if="tab === 'members'">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div v-for="m in members" :key="m.id" class="card row" style="padding:10px 13px;gap:10px;">
-            <span class="av" style="width:30px;height:30px;" :style="{ background: m.color }">{{ m.initials }}</span>
+            <Avatar :member="m" :size="30" />
             <div style="flex:1;">
               <span style="font-weight:600;">{{ m.name }}</span>
               <span v-if="m.role === 'admin'" class="chip" style="padding:2px 9px;margin-left:6px;background:var(--gold-bg);color:var(--gold-d);">admin</span>
@@ -226,8 +226,7 @@ async function addBook(l) {
           <input v-model="rForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
             <input v-model.number="rForm.costCoins" type="number" min="0" placeholder="Cost" />
-            <select v-model="rForm.tier" style="width:90px;"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
-            <input v-model.number="rForm.ownerCut" type="number" min="0" max="100" style="width:90px;" placeholder="Cut %" />
+            <select v-model="rForm.tier" style="flex:1;"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
           </div>
           <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (blank = unlimited)" />
           <div class="sub" style="margin-top:-2px;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ rForm.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(rForm.costCoins) }}</strong> <span style="opacity:.7;">(100 coins = $1)</span></div>
@@ -244,7 +243,7 @@ async function addBook(l) {
         <template v-if="redemptions.length">
           <div class="sub" style="margin-top:6px;">Pending deliveries (oversight)</div>
           <div v-for="rd in redemptions" :key="'rd' + rd.id" class="card row" style="gap:10px;">
-            <span class="av" style="width:30px;height:30px;" :style="{ background: rd.color }">{{ rd.initials }}</span>
+            <Avatar :member="rd" :size="30" />
             <div style="flex:1;"><div style="font-weight:600;">{{ rd.name }}</div><div class="sub">{{ rd.member }} → owner {{ rd.owner }}</div></div>
             <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.fulfillRedemption(rd.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
             <button class="chip" @click="act(() => api.cancelRedemption(rd.id))">refund</button>

@@ -16,11 +16,15 @@ const STATIC_ROOT = process.env.BOOKCOIN_STATIC ?? join(import.meta.dirname, '..
 const balance = (memberId) =>
   db.prepare('SELECT COALESCE(SUM(amount),0) AS bal FROM coin_txns WHERE member_id = ?').get(memberId).bal;
 
+// total coins ever EARNED (gross — excludes spending and refunds), for the leaderboard + profile
+const lifetimeEarned = (memberId) =>
+  db.prepare("SELECT COALESCE(SUM(amount),0) AS n FROM coin_txns WHERE member_id = ? AND amount > 0 AND reason != 'refund'").get(memberId).n;
+
 const publicMember = (m) => ({
   id: m.id, name: m.name, initials: m.initials, color: m.color,
   monthlyGoalMinutes: m.monthly_goal_minutes, role: m.role,
   theme: m.theme || 'classic', emblem: m.emblem || '', mascot: m.mascot || 'wizard',
-  onboarded: !!m.onboarded,
+  avatar: m.avatar || '', onboarded: !!m.onboarded,
 });
 
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
@@ -35,6 +39,10 @@ const initialsFrom = (name) => {
 const clampGoal = (v) => Math.max(30, Math.min(6000, Math.round(Number(v) || 900)));
 const nextColor = () => MEMBER_COLORS[db.prepare('SELECT COUNT(*) AS n FROM members').get().n % MEMBER_COLORS.length];
 
+// Reward owner's cut is a FIXED % of the price (the rest sinks), rounded up.
+const OWNER_CUT_PCT = 20;
+const ownerCutCoins = (cost) => Math.ceil((Math.max(0, cost) * OWNER_CUT_PCT) / 100);
+
 // Fulfill/cancel a redemption — allowed for the reward's owner or any admin.
 function doFulfill(rdId, by) {
   const rd = db.prepare("SELECT * FROM redemptions WHERE id = ? AND status = 'requested'").get(rdId);
@@ -42,7 +50,7 @@ function doFulfill(rdId, by) {
   const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(rd.reward_id);
   if (by.role !== 'admin' && r.owner_id !== by.id) return { code: 403, error: 'Not allowed' };
   db.prepare("UPDATE redemptions SET status = 'fulfilled' WHERE id = ?").run(rd.id);
-  const cut = Math.round((rd.cost_coins * (r.owner_cut || 0)) / 100); // rest is sunk
+  const cut = ownerCutCoins(rd.cost_coins); // rest is sunk
   if (cut > 0 && r.owner_id) {
     db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
       .run(r.owner_id, cut, 'reward-earnings', rd.id);
@@ -241,7 +249,7 @@ const api = new Hono();
 api.get('/health', (c) => c.json({ ok: true }));
 
 api.get('/members', (c) =>
-  c.json(db.prepare('SELECT id, name, initials, color FROM members ORDER BY id').all()));
+  c.json(db.prepare('SELECT id, name, initials, color, avatar FROM members ORDER BY id').all()));
 
 api.post('/login', async (c) => {
   const { memberId, pin } = await c.req.json().catch(() => ({}));
@@ -372,7 +380,7 @@ api.get('/leaderboard', (c) => {
   const period = c.req.query('period') === 'all' ? 'all' : 'month';
   const monthFilter = period === 'month' ? "AND strftime('%Y-%m', s.created_at) = ?" : '';
   const sql = `
-    SELECT m.id AS memberId, m.name, m.initials, m.color, m.monthly_goal_minutes AS goal,
+    SELECT m.id AS memberId, m.name, m.initials, m.color, m.avatar, m.monthly_goal_minutes AS goal,
            COALESCE(SUM(s.minutes),0) AS minutes,
            COALESCE(SUM(s.pages),0) AS pages,
            COALESCE(SUM(s.coins),0) AS coins
@@ -381,7 +389,9 @@ api.get('/leaderboard', (c) => {
     GROUP BY m.id
     ORDER BY minutes DESC, coins DESC`;
   const rows = period === 'month' ? db.prepare(sql).all(monthKey()) : db.prepare(sql).all();
-  return c.json({ period, month: monthKey(), rows: rows.map((r, i) => ({ ...r, rank: i + 1 })) });
+  // month → each member's CURRENT balance; all-time → lifetime coins EARNED (gross, never drops when you spend)
+  const coinsFor = period === 'all' ? lifetimeEarned : balance;
+  return c.json({ period, month: monthKey(), rows: rows.map((r, i) => ({ ...r, rank: i + 1, coins: coinsFor(r.memberId) })) });
 });
 
 api.get('/profile/:id', (c) => {
@@ -399,7 +409,7 @@ api.get('/profile/:id', (c) => {
     finishedThisYear: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'finished' AND strftime('%Y', COALESCE(finished_at, created_at)) = strftime('%Y','now')").get(id).n,
     wantTotal: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'want'").get(id).n,
   };
-  return c.json({ member: publicMember(m), balance: balance(id), totals, byMedium, monthMinutes, recent, shelf, badges: computeBadges(id, totals) });
+  return c.json({ member: publicMember(m), balance: balance(id), lifetimeEarned: lifetimeEarned(id), totals, byMedium, monthMinutes, recent, shelf, badges: computeBadges(id, totals) });
 });
 
 api.post('/me/goal', async (c) => {
@@ -419,22 +429,25 @@ api.post('/me/onboarded', (c) => {
 
 // free personalization — members style their own profile/app (not a coin sink)
 const THEMES = ['classic', 'rose', 'plum', 'ocean', 'forest', 'evening'];
-const MASCOTS = ['wizard', 'owl', 'fox', 'cat'];
+const MASCOTS = ['wizard', 'owl', 'fox', 'cat', 'mushroom'];
+const AVATAR_IDS = ['cat', 'dog', 'fox', 'bunny', 'bear', 'panda', 'owl', 'frog', 'penguin'];
 api.post('/me/appearance', async (c) => {
   const m = c.get('member');
   const b = await c.req.json().catch(() => ({}));
   const theme = THEMES.includes(b.theme) ? b.theme : m.theme;
   const mascot = MASCOTS.includes(b.mascot) ? b.mascot : m.mascot;
+  // avatar: '' (initials) or one of the preset ids
+  const avatar = b.avatar != null ? (b.avatar === '' || AVATAR_IDS.includes(b.avatar) ? b.avatar : m.avatar) : m.avatar;
   const emblem = b.emblem != null ? String(b.emblem).slice(0, 8) : m.emblem;
   const color = b.color != null && /^#[0-9a-fA-F]{6}$/.test(b.color) ? b.color : m.color;
-  db.prepare('UPDATE members SET theme = ?, mascot = ?, emblem = ?, color = ? WHERE id = ?').run(theme, mascot, emblem, color, m.id);
+  db.prepare('UPDATE members SET theme = ?, mascot = ?, avatar = ?, emblem = ?, color = ? WHERE id = ?').run(theme, mascot, avatar, emblem, color, m.id);
   return c.json(publicMember(db.prepare('SELECT * FROM members WHERE id = ?').get(m.id)));
 });
 
 api.get('/activity', (c) => {
   const rows = db.prepare(`
     SELECT s.id, s.title, s.minutes, s.medium, s.created_at AS createdAt, s.genres,
-           m.name, m.initials, m.color
+           m.name, m.initials, m.color, m.avatar
     FROM sessions s JOIN members m ON m.id = s.member_id
     ORDER BY s.id DESC LIMIT 10`).all();
   return c.json(rows.map((r) => ({ ...r, genres: safeParse(r.genres) })));
@@ -483,7 +496,7 @@ api.get('/rewards', (c) => {
   const m = c.get('member');
   const rewards = db.prepare(`
     SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.owner_cut AS ownerCut,
-           r.owner_id AS ownerId, o.name AS ownerName, o.initials AS ownerInitials, o.color AS ownerColor
+           r.owner_id AS ownerId, o.name AS ownerName, o.initials AS ownerInitials, o.color AS ownerColor, o.avatar AS ownerAvatar
     FROM rewards r LEFT JOIN members o ON o.id = r.owner_id
     WHERE r.status = 'approved' ORDER BY r.cost_coins`).all();
   return c.json({ balance: balance(m.id), rewards });
@@ -496,7 +509,7 @@ api.post('/rewards', async (c) => {
   if (!(b.name || '').trim()) return c.json({ error: 'Name required' }, 400);
   const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : 'mid';
   const stock = b.stock === '' || b.stock == null ? null : Math.max(0, Math.round(Number(b.stock)));
-  const cut = Math.max(0, Math.min(100, Math.round(Number(b.ownerCut ?? 50))));
+  const cut = OWNER_CUT_PCT; // fixed; members don't set their own cut
   const status = m.role === 'admin' ? 'approved' : 'pending';
   const info = db.prepare(
     'INSERT INTO rewards (name, description, cost_coins, tier, stock, owner_id, owner_cut, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -546,7 +559,7 @@ api.get('/me/offers', (c) => {
   ).all(m.id);
   const toFulfill = db.prepare(`
     SELECT rd.id, rd.cost_coins AS costCoins, rd.created_at AS createdAt, r.name, r.owner_cut AS ownerCut,
-           mem.name AS member, mem.initials, mem.color
+           mem.name AS member, mem.initials, mem.color, mem.avatar
     FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id JOIN members mem ON mem.id = rd.member_id
     WHERE r.owner_id = ? AND rd.status = 'requested' ORDER BY rd.id DESC`).all(m.id);
   return c.json({ mine, toFulfill });
@@ -613,8 +626,7 @@ api.post('/admin/rewards/:id/approve', async (c) => {
   if (!r) return c.json({ error: 'Not found' }, 404);
   const b = await c.req.json().catch(() => ({}));
   const cost = b.costCoins != null ? Math.max(0, Math.round(Number(b.costCoins))) : r.cost_coins;
-  const cut = b.ownerCut != null ? Math.max(0, Math.min(100, Math.round(Number(b.ownerCut)))) : r.owner_cut;
-  db.prepare("UPDATE rewards SET status = 'approved', cost_coins = ?, owner_cut = ? WHERE id = ?").run(cost, cut, id);
+  db.prepare("UPDATE rewards SET status = 'approved', cost_coins = ?, owner_cut = ? WHERE id = ?").run(cost, OWNER_CUT_PCT, id);
   return c.body(null, 204);
 });
 
@@ -632,11 +644,10 @@ api.patch('/admin/rewards/:id', async (c) => {
   const desc = b.description != null ? String(b.description) : r.description;
   const cost = b.costCoins != null ? Math.max(0, Math.round(Number(b.costCoins) || 0)) : r.cost_coins;
   const tier = ['low', 'mid', 'high'].includes(b.tier) ? b.tier : r.tier;
-  const cut = b.ownerCut != null ? Math.max(0, Math.min(100, Math.round(Number(b.ownerCut) || 0))) : r.owner_cut;
   let stock = r.stock;
   if (b.stock !== undefined) stock = (b.stock === '' || b.stock == null) ? null : Math.max(0, Math.round(Number(b.stock) || 0));
   db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, tier = ?, stock = ?, owner_cut = ? WHERE id = ?')
-    .run(name, desc, cost, tier, stock, cut, id);
+    .run(name, desc, cost, tier, stock, OWNER_CUT_PCT, id);
   return c.json({ ok: true });
 });
 
@@ -648,7 +659,7 @@ api.delete('/admin/rewards/:id', (c) => {
 api.get('/admin/redemptions', (c) => {
   const rows = db.prepare(`
     SELECT rd.id, rd.cost_coins AS costCoins, rd.status, rd.created_at AS createdAt,
-           r.name, o.name AS owner, m.name AS member, m.initials, m.color
+           r.name, o.name AS owner, m.name AS member, m.initials, m.color, m.avatar
     FROM redemptions rd JOIN rewards r ON r.id = rd.reward_id JOIN members m ON m.id = rd.member_id
     LEFT JOIN members o ON o.id = r.owner_id
     WHERE rd.status = 'requested' ORDER BY rd.id DESC LIMIT 60`).all();
@@ -658,7 +669,7 @@ api.get('/admin/redemptions', (c) => {
 api.get('/admin/quest-claims', (c) => {
   const rows = db.prepare(`
     SELECT qc.id, qc.status, qc.created_at AS createdAt, q.title, q.reward_coins AS rewardCoins,
-           m.name AS member, m.initials, m.color
+           m.name AS member, m.initials, m.color, m.avatar
     FROM quest_claims qc JOIN quests q ON q.id = qc.quest_id JOIN members m ON m.id = qc.member_id
     WHERE qc.status = 'pending' ORDER BY qc.id DESC`).all();
   return c.json(rows);

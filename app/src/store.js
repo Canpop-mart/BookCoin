@@ -7,6 +7,7 @@ export const store = reactive({
   member: saved.member || null,
   serverUrl: saved.serverUrl || '', // '' = same origin (web); set to NAS URL in the app
   draft: null, // in-progress reading session handed from timer -> log
+  deliveries: 0, // rewards of mine that someone bought and I owe — drives the nav badge
   // running reading timer, persisted so it survives backgrounding / app kill.
   // { startedAt, running, pausedAccumMs, pausedAt, title } — all timestamp-based.
   timer: saved.timer || null,
@@ -18,6 +19,7 @@ export const store = reactive({
   },
   setAuth(token, member) { this.token = token; this.member = member; this.save(); },
   setMember(member) { if (member) { this.member = member; this.save(); } },
+  setDeliveries(n) { this.deliveries = n || 0; },
   logout() { this.token = null; this.member = null; this.draft = null; this.timer = null; this.save(); },
 
   // --- reading timer (wall-clock based, so backgrounding never loses time) ---
