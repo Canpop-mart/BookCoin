@@ -43,6 +43,7 @@ export const api = {
 
   rewards: () => req('/rewards'),
   createReward: (b) => req('/rewards', { method: 'POST', body: b }),
+  editReward: (id, b) => req(`/rewards/${id}`, { method: 'PATCH', body: b }),
   archiveReward: (id) => req(`/rewards/${id}/archive`, { method: 'POST' }),
   redeemReward: (id) => req(`/rewards/${id}/redeem`, { method: 'POST' }),
   myRedemptions: () => req('/me/redemptions'),

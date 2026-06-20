@@ -576,6 +576,29 @@ api.post('/rewards/:id/archive', (c) => {
   return c.body(null, 204);
 });
 
+// owner edits their own offer — a member's edit goes back to the admin for re-approval
+api.patch('/rewards/:id', async (c) => {
+  const m = c.get('member');
+  const r = db.prepare('SELECT * FROM rewards WHERE id = ?').get(Number(c.req.param('id')));
+  if (!r) return c.json({ error: 'Not found' }, 404);
+  if (r.owner_id !== m.id && m.role !== 'admin') return c.json({ error: 'Not allowed' }, 403);
+  if (r.status === 'archived') return c.json({ error: 'That reward is archived' }, 400);
+  const b = await c.req.json().catch(() => ({}));
+  if (b.name != null && !String(b.name).trim()) return c.json({ error: 'Name required' }, 400);
+  const name = b.name != null ? String(b.name).trim() : r.name;
+  const desc = b.description != null ? String(b.description) : r.description;
+  const cost = b.costCoins != null ? Math.max(0, Math.round(Number(b.costCoins) || 0)) : r.cost_coins;
+  let scope = r.scope;
+  const ids = Array.isArray(b.audience) ? b.audience.map(Number).filter(Number.isInteger) : [];
+  if (b.scope === 'everyone') { scope = 'everyone'; setAudience(r.id, []); }
+  else if (b.scope === 'people' && ids.length) { scope = 'people'; setAudience(r.id, ids); }
+  // member edits require re-approval; an admin editing their own keeps it live
+  const status = m.role === 'admin' ? r.status : 'pending';
+  db.prepare('UPDATE rewards SET name = ?, description = ?, cost_coins = ?, scope = ?, status = ? WHERE id = ?')
+    .run(name, desc, cost, scope, status, r.id);
+  return c.json({ status });
+});
+
 api.get('/me/redemptions', (c) => {
   const m = c.get('member');
   const rows = db.prepare(`
@@ -589,8 +612,8 @@ api.get('/me/redemptions', (c) => {
 api.get('/me/offers', (c) => {
   const m = c.get('member');
   const mine = db.prepare(
-    "SELECT id, name, cost_coins AS costCoins, status, owner_cut AS ownerCut, scope FROM rewards WHERE owner_id = ? AND status != 'archived' ORDER BY id DESC"
-  ).all(m.id).map((r) => ({ ...r, audience: r.scope === 'people' ? audienceNames(r.id) : [] }));
+    "SELECT id, name, description, cost_coins AS costCoins, status, owner_cut AS ownerCut, scope FROM rewards WHERE owner_id = ? AND status != 'archived' ORDER BY id DESC"
+  ).all(m.id).map((r) => ({ ...r, audienceIds: r.scope === 'people' ? audienceIds(r.id) : [] }));
   const toFulfill = db.prepare(`
     SELECT rd.id, rd.cost_coins AS costCoins, rd.created_at AS createdAt, r.name, r.owner_cut AS ownerCut,
            mem.name AS member, mem.initials, mem.color, mem.avatar

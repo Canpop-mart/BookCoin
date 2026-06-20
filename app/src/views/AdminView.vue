@@ -23,7 +23,7 @@ const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6'
 const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '', householdId: null });
 const hForm = reactive({ id: null, name: '', color: '#E0785A' });
 const qForm = reactive({ id: null, title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
-const rForm = reactive({ id: null, name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 });
+const rForm = reactive({ id: null, name: '', description: '', costCoins: 200, stock: '', ownerCut: 0 });
 const lForm = reactive({ id: null, name: '', description: '' });
 const bookInput = reactive({});
 const bookEdit = reactive({});
@@ -112,9 +112,9 @@ async function saveQuest() {
   toast.value = editing ? 'Quest saved' : 'Quest created'; resetQuest();
 }
 
-function resetReward() { Object.assign(rForm, { id: null, name: '', description: '', costCoins: 200, tier: 'low', stock: '', ownerCut: 0 }); }
+function resetReward() { Object.assign(rForm, { id: null, name: '', description: '', costCoins: 200, stock: '', ownerCut: 0 }); }
 function editReward(r) {
-  Object.assign(rForm, { id: r.id, name: r.name, description: r.description || '', costCoins: r.costCoins, tier: r.tier, stock: r.stock ?? '', ownerCut: r.ownerCut });
+  Object.assign(rForm, { id: r.id, name: r.name, description: r.description || '', costCoins: r.costCoins, stock: r.stock ?? '', ownerCut: r.ownerCut });
 }
 async function saveReward() {
   if (!rForm.name.trim()) { toast.value = 'Name required'; return; }
@@ -284,10 +284,9 @@ async function addBook(l) {
           <input v-model="rForm.name" placeholder="Name" />
           <input v-model="rForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
-            <input v-model.number="rForm.costCoins" type="number" min="0" placeholder="Cost" />
-            <select v-model="rForm.tier" style="flex:1;"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
+            <input v-model.number="rForm.costCoins" type="number" min="0" placeholder="Cost" style="flex:1;" />
+            <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (blank = unlimited)" style="flex:1;" />
           </div>
-          <input v-model="rForm.stock" type="number" min="0" placeholder="Stock (blank = unlimited)" />
           <div class="sub" style="margin-top:-2px;"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ rForm.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(rForm.costCoins) }}</strong> <span style="opacity:.7;">(100 coins = $1)</span></div>
           <button class="btn" @click="saveReward"><i :class="rForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ rForm.id ? 'Save reward' : 'Create reward' }}</button>
           <button v-if="rForm.id" class="chip" @click="resetReward">Cancel</button>
