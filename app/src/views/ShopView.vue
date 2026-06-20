@@ -14,7 +14,7 @@ const view = ref('store');
 const menuOpen = ref(false);
 const showOffer = ref(false);
 const members = ref([]);
-const form = reactive({ name: '', description: '', costCoins: 50, tier: 'mid', scope: 'everyone', audience: [] });
+const form = reactive({ editingId: null, name: '', description: '', costCoins: 50, scope: 'everyone', audience: [] });
 
 const toDeliver = computed(() => offers.value.toFulfill.length);
 const VIEWS = { store: 'Store', offers: 'My offers', receipts: 'Purchases' };
@@ -22,10 +22,18 @@ const viewLabel = computed(() => VIEWS[view.value]);
 function setView(v) { view.value = v; menuOpen.value = false; }
 // people you can offer a reward to — everyone except yourself
 const otherMembers = computed(() => members.value.filter((m) => m.id !== store.member.id));
+const memberName = (id) => members.value.find((m) => m.id === id)?.name || '';
 function toggleAudience(id) {
   const i = form.audience.indexOf(id);
   if (i === -1) form.audience.push(id); else form.audience.splice(i, 1);
 }
+function resetForm() { Object.assign(form, { editingId: null, name: '', description: '', costCoins: 50, scope: 'everyone', audience: [] }); }
+function openOffer() { resetForm(); showOffer.value = true; }
+function editOffer(r) {
+  Object.assign(form, { editingId: r.id, name: r.name, description: r.description || '', costCoins: r.costCoins, scope: r.scope, audience: [...(r.audienceIds || [])] });
+  showOffer.value = true;
+}
+function closeOffer() { showOffer.value = false; resetForm(); }
 
 async function load() {
   [data.value, redemptions.value, offers.value, members.value] = await Promise.all([api.rewards(), api.myRedemptions(), api.myOffers(), api.members()]);
@@ -38,6 +46,8 @@ const tier = {
   mid: { bg: 'var(--gold-bg)', fg: 'var(--gold-d)' },
   high: { bg: 'var(--blush-bg)', fg: 'var(--blush-d)' },
 };
+// icon colour is derived from price (no manual tier choice)
+const tierFor = (cost) => (cost >= 900 ? 'high' : cost >= 300 ? 'mid' : 'low');
 const statusStyle = (s) => s === 'fulfilled' || s === 'approved'
   ? { background: 'var(--sage-bg)', color: 'var(--sage-d)' }
   : s === 'cancelled' || s === 'denied'
@@ -57,8 +67,13 @@ function redeem(r) {
 function submitOffer() {
   if (!form.name.trim()) { toast.value = 'Give it a name'; return; }
   if (form.scope === 'people' && !form.audience.length) { toast.value = 'Pick who it\'s for, or choose Everyone'; return; }
-  run(() => api.createReward({ ...form }), store.member.role === 'admin' ? 'Reward added' : 'Sent to an admin for approval')
-    .then(() => { showOffer.value = false; form.name = ''; form.description = ''; form.scope = 'everyone'; form.audience = []; });
+  const payload = { name: form.name, description: form.description, costCoins: form.costCoins, scope: form.scope, audience: form.audience };
+  const isAdmin = store.member.role === 'admin';
+  const msg = form.editingId
+    ? (isAdmin ? 'Reward updated' : 'Saved — sent to an admin for re-approval')
+    : (isAdmin ? 'Reward added' : 'Sent to an admin for approval');
+  const action = form.editingId ? () => api.editReward(form.editingId, payload) : () => api.createReward(payload);
+  run(action, msg).then(() => { showOffer.value = false; resetForm(); });
 }
 </script>
 
@@ -88,39 +103,41 @@ function submitOffer() {
     </div>
     <p v-if="toast" class="sub pop-in" style="text-align:center;color:var(--gold-d);">{{ toast }}</p>
 
+    <!-- offer / edit reward form — shows on any tab when open -->
+    <div v-if="showOffer" class="card" style="display:flex;flex-direction:column;gap:9px;">
+      <div class="row" style="justify-content:space-between;">
+        <span style="font-weight:600;font-size:14px;">{{ form.editingId ? 'Edit reward' : 'Offer a reward' }}</span>
+        <button class="chip" aria-label="Close" @click="closeOffer"><i class="ti ti-x" aria-hidden="true"></i></button>
+      </div>
+      <input v-model="form.name" placeholder="What are you offering? (e.g. a drawing)" />
+      <input v-model="form.description" placeholder="Description (optional)" />
+      <label class="sub">Price <input v-model.number="form.costCoins" type="number" min="0" /></label>
+      <div>
+        <div class="sub" style="margin-bottom:6px;">Who's this for?</div>
+        <div class="row" style="gap:8px;">
+          <button type="button" class="chip" :class="{ on: form.scope === 'everyone' }" style="flex:1;justify-content:center;" @click="form.scope = 'everyone'"><i class="ti ti-users" aria-hidden="true"></i> Everyone</button>
+          <button type="button" class="chip" :class="{ on: form.scope === 'people' }" style="flex:1;justify-content:center;" @click="form.scope = 'people'"><i class="ti ti-user-check" aria-hidden="true"></i> Specific people</button>
+        </div>
+        <div v-if="form.scope === 'people'" class="row" style="gap:7px;flex-wrap:wrap;margin-top:8px;">
+          <button v-for="m in otherMembers" :key="m.id" type="button" class="chip" :class="{ on: form.audience.includes(m.id) }" style="gap:6px;" @click="toggleAudience(m.id)">
+            <Avatar :member="m" :size="18" /> {{ m.name }}
+          </button>
+        </div>
+      </div>
+      <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. When someone buys it you keep <strong style="color:var(--ink);">{{ Math.ceil((form.costCoins || 0) * 0.2) }}</strong> (20%); the rest is spent.</div>
+      <p v-if="form.editingId && store.member.role !== 'admin'" class="sub" style="color:var(--terra-d);"><i class="ti ti-info-circle" aria-hidden="true"></i> Editing sends it back to an admin for re-approval.</p>
+      <button class="btn" :disabled="busy" @click="submitOffer"><i class="ti ti-check" aria-hidden="true"></i> {{ form.editingId ? 'Save changes' : (store.member.role === 'admin' ? 'Add reward' : 'Submit for approval') }}</button>
+    </div>
+
     <!-- ============ STORE ============ -->
     <template v-if="view === 'store'">
-      <button class="chip" style="align-self:flex-start;" @click="showOffer = !showOffer"><i class="ti ti-plus" aria-hidden="true"></i> Offer a reward</button>
-      <div v-if="showOffer" class="card" style="display:flex;flex-direction:column;gap:9px;">
-        <input v-model="form.name" placeholder="What are you offering? (e.g. a drawing)" />
-        <input v-model="form.description" placeholder="Description (optional)" />
-        <div class="row" style="gap:8px;">
-          <label class="sub" style="flex:1;">Price <input v-model.number="form.costCoins" type="number" min="0" /></label>
-          <label class="sub" style="flex:1;">Tier
-            <select v-model="form.tier"><option value="low">Low</option><option value="mid">Mid</option><option value="high">High</option></select>
-          </label>
-        </div>
-        <div>
-          <div class="sub" style="margin-bottom:6px;">Who's this for?</div>
-          <div class="row" style="gap:8px;">
-            <button type="button" class="chip" :class="{ on: form.scope === 'everyone' }" style="flex:1;justify-content:center;" @click="form.scope = 'everyone'"><i class="ti ti-users" aria-hidden="true"></i> Everyone</button>
-            <button type="button" class="chip" :class="{ on: form.scope === 'people' }" style="flex:1;justify-content:center;" @click="form.scope = 'people'"><i class="ti ti-user-check" aria-hidden="true"></i> Specific people</button>
-          </div>
-          <div v-if="form.scope === 'people'" class="row" style="gap:7px;flex-wrap:wrap;margin-top:8px;">
-            <button v-for="m in otherMembers" :key="m.id" type="button" class="chip" :class="{ on: form.audience.includes(m.id) }" style="gap:6px;" @click="toggleAudience(m.id)">
-              <Avatar :member="m" :size="18" /> {{ m.name }}
-            </button>
-          </div>
-        </div>
-        <div class="sub">{{ form.costCoins || 0 }} coins ≈ <strong style="color:var(--ink);">{{ usd(form.costCoins) }}</strong>. When someone buys it you keep <strong style="color:var(--ink);">{{ Math.ceil((form.costCoins || 0) * 0.2) }}</strong> (20%); the rest is spent.</div>
-        <button class="btn" :disabled="busy" @click="submitOffer"><i class="ti ti-check" aria-hidden="true"></i> {{ store.member.role === 'admin' ? 'Add reward' : 'Submit for approval' }}</button>
-      </div>
+      <button v-if="!showOffer" class="chip" style="align-self:flex-start;" @click="openOffer"><i class="ti ti-plus" aria-hidden="true"></i> Offer a reward</button>
 
       <div v-if="!data.rewards.length" class="card sub">No rewards yet — offer one above!</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:11px;">
         <div v-for="r in data.rewards" :key="r.id" class="card" style="display:flex;gap:13px;align-items:center;">
           <div style="width:48px;height:48px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"
-            :style="{ background: tier[r.tier].bg, color: tier[r.tier].fg }">
+            :style="{ background: tier[tierFor(r.costCoins)].bg, color: tier[tierFor(r.costCoins)].fg }">
             <i class="ti ti-gift" style="font-size:24px;" aria-hidden="true"></i>
           </div>
           <div style="flex:1;min-width:0;">
@@ -160,9 +177,10 @@ function submitOffer() {
       <template v-if="offers.mine.length">
         <div class="sub" style="margin-top:4px;">Listed by you</div>
         <div v-for="r in offers.mine" :key="r.id" class="card row" style="padding:11px 14px;gap:8px;">
-          <div style="flex:1;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }} · {{ r.scope === 'people' ? 'for ' + (r.audience || []).join(', ') : 'everyone' }}</span></div>
+          <div style="flex:1;min-width:0;"><span style="font-weight:600;">{{ r.name }}</span> <span class="sub">{{ r.costCoins }} · keep {{ Math.ceil(r.costCoins * 0.2) }} · {{ r.scope === 'people' ? 'for ' + (r.audienceIds || []).map(memberName).filter(Boolean).join(', ') : 'everyone' }}</span></div>
           <span class="chip" :style="statusStyle(r.status)" style="padding:3px 10px;">{{ r.status }}</span>
-          <button class="chip" :disabled="busy" @click="run(() => api.archiveReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          <button class="chip" aria-label="edit" :disabled="busy" @click="editOffer(r)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+          <button class="chip" aria-label="remove" :disabled="busy" @click="run(() => api.archiveReward(r.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
         </div>
       </template>
     </template>
