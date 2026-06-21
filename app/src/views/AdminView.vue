@@ -15,6 +15,7 @@ const quests = ref([]);
 const rewards = ref([]);
 const redemptions = ref([]);
 const claims = ref([]);
+const sessionDeletions = ref([]);
 const lists = ref([]);
 const genres = ref([]);
 const households = ref([]);
@@ -32,7 +33,7 @@ const gForm = reactive({ name: '' });
 const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['genres', 'Genres read'], ['mediums', 'Formats read'], ['streak', 'Day streak'], ['manual', 'Manual / bounty']];
 const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
 const liveRewards = computed(() => rewards.value.filter((r) => r.status !== 'pending'));
-const pendingCount = computed(() => claims.value.length + pendingRewards.value.length);
+const pendingCount = computed(() => claims.value.length + pendingRewards.value.length + sessionDeletions.value.length);
 const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['households', 'Households'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']];
 
 const householdName = (id) => households.value.find((h) => h.id === id)?.name || '';
@@ -42,6 +43,7 @@ async function load() {
     [members.value, quests.value, rewards.value, redemptions.value, claims.value, lists.value, genres.value, households.value] = await Promise.all([
       api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(), api.lists(), api.admin.genres(), api.households(),
     ]);
+    sessionDeletions.value = await api.admin.sessionDeletions();
     for (const l of lists.value) if (!bookInput[l.id]) bookInput[l.id] = { title: '', author: '' };
   } catch (e) {
     if (/admin/i.test(e.message)) allowed.value = false;
@@ -168,7 +170,7 @@ async function addBook(l) {
         <div v-if="!pendingCount" class="card sub">Nothing pending.</div>
         <div v-for="c in claims" :key="'c' + c.id" class="card row" style="gap:10px;">
           <Avatar :avatar="c.avatar" :color="c.color" :initials="c.initials" :size="30" />
-          <div style="flex:1;"><div style="font-weight:600;">{{ c.member }}</div><div class="sub">challenge: {{ c.title }} · +{{ c.rewardCoins }}</div></div>
+          <div style="flex:1;"><div style="font-weight:600;">{{ c.member }}</div><div class="sub">{{ c.kind === 'bounty' ? 'bounty' : 'challenge' }}: {{ c.title }} · +{{ c.rewardCoins }}</div></div>
           <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.approveClaim(c.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
           <button class="chip" @click="act(() => api.admin.rejectClaim(c.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
@@ -177,6 +179,12 @@ async function addBook(l) {
           <div style="flex:1;"><div style="font-weight:600;">{{ r.name }}</div><div class="sub">offer by {{ r.ownerName }} · {{ r.costCoins }} coins · {{ r.ownerCut }}% cut</div></div>
           <button class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.approveReward(r.id))"><i class="ti ti-check" aria-hidden="true"></i></button>
           <button class="chip" @click="act(() => api.admin.denyReward(r.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div v-for="s in sessionDeletions" :key="'sd' + s.id" class="card row" style="gap:10px;">
+          <Avatar :avatar="s.avatar" :color="s.color" :initials="s.initials" :size="30" />
+          <div style="flex:1;min-width:0;"><div style="font-weight:600;">{{ s.member }} wants to remove a session</div><div class="sub">{{ s.title || 'Reading session' }} · {{ s.minutes }}m · claws back {{ s.coins }} coins</div></div>
+          <button class="chip" style="background:var(--terra);color:#fff;" title="Approve removal" @click="act(() => api.admin.approveSessionDeletion(s.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          <button class="chip" title="Keep it" @click="act(() => api.admin.rejectSessionDeletion(s.id))"><i class="ti ti-x" aria-hidden="true"></i></button>
         </div>
       </template>
 

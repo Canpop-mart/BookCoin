@@ -5,7 +5,7 @@ import { store } from '../store';
 <template>
   <nav class="bottom-nav">
     <router-link to="/"><i class="ti ti-home" aria-hidden="true"></i><span>Home</span></router-link>
-    <router-link to="/quests"><i class="ti ti-wand" aria-hidden="true"></i><span>Quests</span></router-link>
+    <router-link to="/quests" style="position:relative;"><i class="ti ti-wand" aria-hidden="true"></i><span>Quests</span><span v-if="store.questsReady" class="nav-badge">{{ store.questsReady }}</span></router-link>
     <router-link to="/nook"><i class="ti ti-trophy" aria-hidden="true"></i><span>Ranks</span></router-link>
     <router-link to="/shop" style="position:relative;"><i class="ti ti-gift" aria-hidden="true"></i><span>Rewards</span><span v-if="store.deliveries" class="nav-badge">{{ store.deliveries }}</span></router-link>
     <router-link :to="`/profile/${store.member?.id ?? ''}`"><i class="ti ti-user" aria-hidden="true"></i><span>Profile</span></router-link>

@@ -175,6 +175,20 @@ if (!memberCols.includes('household_id')) db.exec('ALTER TABLE members ADD COLUM
 // --- migration: custom emoji "cover" on bookshelf books ---
 const bookCols = db.prepare('PRAGMA table_info(member_books)').all().map((c) => c.name);
 if (!bookCols.includes('emoji')) db.exec("ALTER TABLE member_books ADD COLUMN emoji TEXT NOT NULL DEFAULT ''");
+if (!bookCols.includes('review')) db.exec("ALTER TABLE member_books ADD COLUMN review TEXT NOT NULL DEFAULT ''");
+
+// --- migration: member-requested session removal (admin approves the deletion) ---
+const sessionCols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+if (!sessionCols.includes('delete_requested')) db.exec('ALTER TABLE sessions ADD COLUMN delete_requested INTEGER NOT NULL DEFAULT 0');
+
+// --- migration: member-posted bounties (stored as quests with kind='bounty') ---
+const questCols2 = db.prepare('PRAGMA table_info(quests)').all().map((c) => c.name);
+if (!questCols2.includes('kind')) db.exec("ALTER TABLE quests ADD COLUMN kind TEXT NOT NULL DEFAULT 'quest'");
+db.exec(`CREATE TABLE IF NOT EXISTS bounty_audience (
+  quest_id INTEGER NOT NULL REFERENCES quests(id),
+  member_id INTEGER NOT NULL REFERENCES members(id),
+  PRIMARY KEY (quest_id, member_id)
+);`);
 
 // --- migration: member-owned rewards (owner, status, cut %) ---
 const rewardCols = db.prepare('PRAGMA table_info(rewards)').all().map((c) => c.name);
