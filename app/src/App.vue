@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { api } from './api';
 import { store } from './store';
-import { fmtClock } from './data';
+import { fmtClock, claimableQuests } from './data';
 import { showReadingNotification, clearReadingNotification, onNotificationTap } from './timerNotify';
 import BottomNav from './components/BottomNav.vue';
 import Onboarding from './components/Onboarding.vue';
@@ -83,7 +83,8 @@ onMounted(async () => {
   onNotificationTap(() => router.push('/reading')); // tapping the notification returns to the session
   if (!store.token) return;
   try { store.setMember((await api.me()).member); } catch {}
-  try { store.setDeliveries((await api.myOffers()).toFulfill.length); } catch {} // nav badge
+  try { store.setDeliveries((await api.myOffers()).toFulfill.length); } catch {} // Rewards nav badge
+  try { store.setQuestsReady(claimableQuests(await api.quests())); } catch {} // Quests nav badge
   // surface a month-end ceremony the first time you open the app in a new month
   try {
     const { summary, seen } = await api.ceremony();

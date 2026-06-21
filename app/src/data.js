@@ -42,6 +42,11 @@ export function fmtDuration(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+// count of quests/challenges a member can claim right now (excludes member bounties)
+export const claimableQuests = (quests) => (quests || []).filter(
+  (q) => q.kind !== 'bounty' && q.type !== 'manual' && q.complete && !['claimed', 'approved', 'pending'].includes(q.claimStatus)
+).length;
+
 export function daysLeftInMonth() {
   const d = new Date();
   const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();

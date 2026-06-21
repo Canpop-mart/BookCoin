@@ -9,14 +9,14 @@ const router = useRouter();
 const daysLeft = daysLeftInMonth();
 const profile = ref(null);
 const lb = ref(null);
-const quests = ref([]);
 const activity = ref([]);
+const comTab = ref('leaders');
 
 onMounted(async () => {
-  const [p, l, q, a] = await Promise.all([
-    api.profile(store.member.id), api.leaderboard('month'), api.quests(), api.activity(),
+  const [p, l, a] = await Promise.all([
+    api.profile(store.member.id), api.leaderboard('month'), api.activity(),
   ]);
-  profile.value = p; lb.value = l; quests.value = q; activity.value = a;
+  profile.value = p; lb.value = l; activity.value = a;
 });
 
 const rows = computed(() => lb.value?.rows || []);
@@ -31,7 +31,6 @@ const monthMinutes = computed(() => profile.value?.monthMinutes ?? 0);
 const goal = computed(() => profile.value?.member?.monthlyGoalMinutes || 900);
 const goalPct = computed(() => pct(monthMinutes.value, goal.value));
 const goalMet = computed(() => monthMinutes.value >= goal.value);
-const claimable = computed(() => quests.value.filter((q) => q.type !== 'manual' && q.complete && !['claimed', 'approved', 'pending'].includes(q.claimStatus)).length);
 const streak = computed(() => {
   const days = new Set((profile.value?.recent || []).map((s) => (s.createdAt || '').slice(0, 10)));
   let n = 0; const d = new Date();
@@ -60,40 +59,42 @@ function ago(ts) {
       </span>
     </div>
 
-    <div class="card row" style="background:var(--sage-bg);border-color:transparent;gap:12px;">
-      <Mascot :size="68" eyes="happy" :variant="store.member.mascot || 'wizard'" />
-      <div style="flex:1;">
-        <div style="font-weight:600;font-size:16px;">Hi, {{ store.member.name }}</div>
-        <div class="sub" style="color:var(--sage-d);margin-top:2px;">
-          <template v-if="myRank === 1">You're 1st this month <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i></template>
-          <template v-else-if="ahead">{{ myRank }}{{ ['th','st','nd','rd'][myRank % 10] || 'th' }} place — {{ fmtDuration(gapAhead) }} behind {{ ahead.name }}</template>
-          <template v-else>Log a session to join the leaderboard</template>
+    <!-- hero: greeting + balance + goal, one cohesive block -->
+    <div class="card" style="display:flex;flex-direction:column;gap:13px;">
+      <div class="row" style="gap:13px;">
+        <Mascot :size="60" eyes="happy" :variant="store.member.mascot || 'wizard'" />
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:17px;">Hi, {{ store.member.name }}</div>
+          <div class="sub" style="margin-top:2px;">
+            <template v-if="myRank === 1">You're 1st this month <i class="ti ti-crown" style="color:var(--gold);" aria-hidden="true"></i></template>
+            <template v-else-if="ahead">{{ myRank }}{{ ['th','st','nd','rd'][myRank % 10] || 'th' }} place · {{ fmtDuration(gapAhead) }} behind {{ ahead.name }}</template>
+            <template v-else>Log a session to join the leaderboard</template>
+          </div>
         </div>
+        <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);align-self:flex-start;"><i class="ti ti-flame flame" aria-hidden="true"></i> {{ streak }}d</span>
       </div>
-      <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flame flame" aria-hidden="true"></i> {{ streak }}d</span>
-    </div>
-
-    <div class="card row" style="gap:0;padding:15px 18px;">
-      <div style="flex:1;">
-        <div class="sub" style="color:var(--gold-d);">Balance</div>
-        <div class="row" style="gap:7px;margin-top:3px;">
-          <i class="ti ti-coin" style="color:var(--gold);font-size:25px;" aria-hidden="true"></i>
-          <span style="font-size:27px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';"><CoinCount :value="profile.balance" /></span>
+      <div class="row" style="gap:0;border-top:1px solid var(--line);padding-top:13px;">
+        <div style="flex:1;">
+          <div class="sub" style="color:var(--gold-d);">Balance</div>
+          <div class="row" style="gap:6px;margin-top:2px;">
+            <i class="ti ti-coin" style="color:var(--gold);font-size:23px;" aria-hidden="true"></i>
+            <span style="font-size:25px;font-weight:700;color:var(--gold-d);font-family:'Quicksand';"><CoinCount :value="profile.balance" /></span>
+          </div>
         </div>
-      </div>
-      <div style="width:1px;align-self:stretch;background:var(--line);margin:2px 16px;"></div>
-      <div class="row" style="gap:11px;">
-        <div style="position:relative;width:56px;height:56px;flex-shrink:0;">
-          <svg viewBox="0 0 36 36" width="56" height="56" style="display:block;">
-            <circle cx="18" cy="18" r="15.6" fill="none" stroke="var(--line)" stroke-width="3.4" />
-            <circle cx="18" cy="18" r="15.6" fill="none" :stroke="goalMet ? 'var(--terra)' : 'var(--sage)'" stroke-width="3.4" stroke-linecap="round" pathLength="100" :stroke-dasharray="`${goalPct} 100`" transform="rotate(-90 18 18)" />
-          </svg>
-          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;font-family:'Quicksand';">{{ Math.round(goalPct) }}%</div>
-        </div>
-        <div>
-          <div class="sub"><i class="ti ti-target" style="color:var(--terra);" aria-hidden="true"></i> Goal</div>
-          <div style="font-weight:600;font-size:13px;margin-top:1px;">{{ fmtDuration(monthMinutes) }}</div>
-          <div class="sub" style="font-size:11px;">of {{ fmtDuration(goal) }}</div>
+        <div style="width:1px;align-self:stretch;background:var(--line);margin:0 16px;"></div>
+        <div class="row" style="gap:11px;">
+          <div style="position:relative;width:52px;height:52px;flex-shrink:0;">
+            <svg viewBox="0 0 36 36" width="52" height="52" style="display:block;">
+              <circle cx="18" cy="18" r="15.6" fill="none" stroke="var(--line)" stroke-width="3.4" />
+              <circle cx="18" cy="18" r="15.6" fill="none" :stroke="goalMet ? 'var(--terra)' : 'var(--sage)'" stroke-width="3.4" stroke-linecap="round" pathLength="100" :stroke-dasharray="`${goalPct} 100`" transform="rotate(-90 18 18)" />
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:'Quicksand';">{{ Math.round(goalPct) }}%</div>
+          </div>
+          <div>
+            <div class="sub"><i class="ti ti-target" style="color:var(--terra);" aria-hidden="true"></i> Goal</div>
+            <div style="font-weight:600;font-size:13px;margin-top:1px;">{{ fmtDuration(monthMinutes) }}</div>
+            <div class="sub" style="font-size:11px;">of {{ fmtDuration(goal) }}</div>
+          </div>
         </div>
       </div>
     </div>
@@ -112,35 +113,31 @@ function ago(ts) {
       <div v-if="!reading.length" class="sub">Add what you're reading to track it →</div>
     </button>
 
-    <button v-if="claimable > 0" class="card row" style="cursor:pointer;width:100%;text-align:left;gap:10px;background:#FFF7F3;border-color:#F2D2C5;" @click="router.push('/quests')">
-      <i class="ti ti-coin" style="color:var(--gold);font-size:22px;" aria-hidden="true"></i>
-      <span style="flex:1;font-weight:600;">{{ claimable }} quest{{ claimable > 1 ? 's' : '' }} ready to claim</span>
-      <i class="ti ti-chevron-right" style="color:var(--ink2);" aria-hidden="true"></i>
-    </button>
-
-    <button class="row" style="background:none;border:none;padding:0;cursor:pointer;justify-content:space-between;width:100%;" @click="router.push('/nook')">
-      <span class="sub">Leaderboard · {{ daysLeft }}d left</span><span class="sub">View all <i class="ti ti-chevron-right" aria-hidden="true"></i></span>
-    </button>
-    <div class="card" style="display:flex;flex-direction:column;gap:11px;">
-      <div v-for="r in top3" :key="r.memberId" class="row" style="gap:10px;">
-        <span class="sub" style="width:12px;">{{ r.rank }}</span>
-        <Avatar :member="r" :size="26" />
-        <span style="flex:1;font-weight:600;font-size:14px;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></span>
-        <span class="sub">{{ fmtDuration(r.minutes) }}</span>
-      </div>
+    <!-- community: leaderboard + activity under one set of selectable headers -->
+    <div class="row" style="gap:7px;">
+      <button class="chip" :class="{ on: comTab === 'leaders' }" style="flex:1;justify-content:center;" @click="comTab = 'leaders'"><i class="ti ti-trophy" aria-hidden="true"></i> Leaderboard</button>
+      <button class="chip" :class="{ on: comTab === 'activity' }" style="flex:1;justify-content:center;" @click="comTab = 'activity'"><i class="ti ti-activity" aria-hidden="true"></i> Activity</button>
     </div>
-
-    <template v-if="activity.length">
-      <div class="sub">Recent activity</div>
-      <div class="card" style="display:flex;flex-direction:column;gap:13px;">
-        <div v-for="a in activity.slice(0, 5)" :key="a.id" class="row" style="gap:10px;align-items:flex-start;">
+    <div class="card" style="display:flex;flex-direction:column;gap:12px;">
+      <template v-if="comTab === 'leaders'">
+        <div v-for="r in top3" :key="r.memberId" class="row" style="gap:10px;">
+          <span class="sub" style="width:12px;">{{ r.rank }}</span>
+          <Avatar :member="r" :size="26" />
+          <span style="flex:1;font-weight:600;font-size:14px;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></span>
+          <span class="sub">{{ fmtDuration(r.minutes) }}</span>
+        </div>
+        <button class="chip" style="align-self:center;margin-top:2px;" @click="router.push('/nook')">Full leaderboard · {{ daysLeft }}d left <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+      </template>
+      <template v-else>
+        <div v-if="!activity.length" class="sub" style="text-align:center;">No activity yet — be the first to log a session.</div>
+        <div v-for="a in activity.slice(0, 6)" :key="a.id" class="row" style="gap:10px;align-items:flex-start;">
           <Avatar :member="a" :size="28" />
           <div style="flex:1;font-size:14px;line-height:1.4;">
             <span style="font-weight:600;">{{ a.name }}</span> read {{ fmtDuration(a.minutes) }}<span v-if="a.title"> of {{ a.title }}</span>
             <div class="sub">{{ mediumLabel(a.medium) }} · {{ ago(a.createdAt) }}</div>
           </div>
         </div>
-      </div>
-    </template>
+      </template>
+    </div>
   </div>
 </template>

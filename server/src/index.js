@@ -178,11 +178,12 @@ const rowToSession = (r) => ({
   id: r.id, memberId: r.member_id, title: r.title, author: r.author, medium: r.medium,
   genres: safeParse(r.genres), minutes: r.minutes, pages: r.pages, summary: r.summary,
   quote: r.quote, coins: r.coins, multiplier: r.multiplier, createdAt: r.created_at,
+  deleteRequested: !!r.delete_requested,
 });
 
 const rowToBook = (b) => ({
   id: b.id, memberId: b.member_id, title: b.title, author: b.author, status: b.status,
-  rating: b.rating, emoji: b.emoji || '', startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
+  rating: b.rating, emoji: b.emoji || '', review: b.review || '', startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
 });
 
 const periodKeyFor = (quest) => (quest.period === 'month' ? monthKey() : 'once');
@@ -217,17 +218,44 @@ function questProgress(quest, memberId) {
   }
 }
 
+// bounties are "read a book/series" tasks; the poster picks an effort tier that fixes the reward
+const MEASURABLE_BOUNTY = ['minutes', 'sessions', 'genres']; // legacy data only — new bounties are always 'book'
+const BOUNTY_EFFORT = { light: 100, standard: 200, epic: 350 };
+function bountyProgress(q, memberId) {
+  const since = q.created_at;
+  if (q.type === 'minutes') return db.prepare('SELECT COALESCE(SUM(minutes),0) AS v FROM sessions WHERE member_id = ? AND created_at >= ?').get(memberId, since).v;
+  if (q.type === 'sessions') return db.prepare('SELECT COUNT(*) AS v FROM sessions WHERE member_id = ? AND created_at >= ?').get(memberId, since).v;
+  if (q.type === 'genres') {
+    const rows = db.prepare('SELECT genres FROM sessions WHERE member_id = ? AND created_at >= ?').all(memberId, since);
+    const set = new Set(); for (const r of rows) for (const g of safeParse(r.genres)) set.add(g); return set.size;
+  }
+  return 0;
+}
+const bountyAudienceNames = (qid) =>
+  db.prepare('SELECT m.name FROM bounty_audience ba JOIN members m ON m.id = ba.member_id WHERE ba.quest_id = ? ORDER BY m.id').all(qid).map((r) => r.name);
+
 function questView(q, memberId) {
   const pk = periodKeyFor(q);
   const claim = db.prepare('SELECT * FROM quest_claims WHERE quest_id = ? AND member_id = ? AND period_key = ?').get(q.id, memberId, pk);
-  const progress = q.type === 'manual' ? (claim && claim.status !== 'rejected' ? q.target : 0) : questProgress(q, memberId);
-  return {
+  const isBounty = q.kind === 'bounty';
+  const measurable = isBounty ? MEASURABLE_BOUNTY.includes(q.type) : q.type !== 'manual';
+  const progress = !measurable
+    ? (claim && claim.status !== 'rejected' ? q.target : 0)              // manual / 'book' → done once claimed
+    : (isBounty ? bountyProgress(q, memberId) : questProgress(q, memberId));
+  const v = {
     id: q.id, title: q.title, description: q.description, type: q.type, target: q.target,
     rewardCoins: q.reward_coins, period: q.period, requiresApproval: !!q.requires_approval,
     progress: Math.min(progress, q.target), rawProgress: progress,
     complete: progress >= q.target,
     claimStatus: claim ? claim.status : null,
+    kind: q.kind || 'quest',
   };
+  if (isBounty) {
+    v.mine = q.created_by === memberId;
+    v.posterName = db.prepare('SELECT name FROM members WHERE id = ?').get(q.created_by)?.name || '';
+    v.forNames = bountyAudienceNames(q.id); // [] means everyone
+  }
+  return v;
 }
 
 function longestStreak(daysAsc) {
@@ -352,6 +380,20 @@ api.get('/me/sessions', (c) => {
   return c.json(db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 50').all(m.id).map(rowToSession));
 });
 
+// a member can ask to remove one of their own sessions; an admin approves the actual deletion
+api.post('/me/sessions/:id/request-delete', (c) => {
+  const m = c.get('member');
+  const s = db.prepare('SELECT * FROM sessions WHERE id = ? AND member_id = ?').get(Number(c.req.param('id')), m.id);
+  if (!s) return c.json({ error: 'Not found' }, 404);
+  db.prepare('UPDATE sessions SET delete_requested = 1 WHERE id = ?').run(s.id);
+  return c.json({ ok: true });
+});
+api.post('/me/sessions/:id/cancel-delete', (c) => {
+  const m = c.get('member');
+  db.prepare('UPDATE sessions SET delete_requested = 0 WHERE id = ? AND member_id = ?').run(Number(c.req.param('id')), m.id);
+  return c.json({ ok: true });
+});
+
 // ---- personal bookshelf ----
 const BOOK_STATUSES = ['want', 'reading', 'finished'];
 
@@ -359,6 +401,20 @@ api.get('/me/books', (c) => {
   const m = c.get('member');
   const rows = db.prepare('SELECT * FROM member_books WHERE member_id = ? ORDER BY COALESCE(finished_at, started_at, created_at) DESC, id DESC').all(m.id);
   return c.json(rows.map(rowToBook));
+});
+
+// one book + every session you logged for it (the "trophy room")
+api.get('/me/books/:id', (c) => {
+  const m = c.get('member');
+  const bk = db.prepare('SELECT * FROM member_books WHERE id = ? AND member_id = ?').get(Number(c.req.param('id')), m.id);
+  if (!bk) return c.json({ error: 'Not found' }, 404);
+  const sessions = db.prepare(`
+    SELECT id, title, medium, genres, minutes, coins, summary, quote, created_at AS createdAt
+    FROM sessions WHERE member_id = ? AND lower(trim(title)) = lower(trim(?)) AND lower(trim(title)) != ''
+    ORDER BY id DESC`).all(m.id, bk.title).map((s) => ({ ...s, genres: safeParse(s.genres) }));
+  const minutes = sessions.reduce((n, s) => n + s.minutes, 0);
+  const coins = sessions.reduce((n, s) => n + s.coins, 0);
+  return c.json({ book: rowToBook(bk), sessions, stats: { minutes, sessions: sessions.length, coins } });
 });
 
 api.post('/me/books', async (c) => {
@@ -385,11 +441,12 @@ api.patch('/me/books/:id', async (c) => {
   const status = BOOK_STATUSES.includes(b.status) ? b.status : bk.status;
   const rating = b.rating != null ? (b.rating ? Math.max(1, Math.min(5, Math.round(Number(b.rating)))) : null) : bk.rating;
   const emoji = b.emoji != null ? String(b.emoji).slice(0, 8) : bk.emoji;
+  const review = b.review != null ? String(b.review).slice(0, 2000) : bk.review;
   // stamp transitions: first time it starts / finishes
   const startedAt = bk.started_at || (status !== 'want' ? nowStr() : null);
   const finishedAt = status === 'finished' ? (bk.finished_at || nowStr()) : null;
-  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, emoji = ?, started_at = ?, finished_at = ? WHERE id = ?')
-    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), emoji, startedAt, finishedAt, id);
+  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, emoji = ?, review = ?, started_at = ?, finished_at = ? WHERE id = ?')
+    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), emoji, review, startedAt, finishedAt, id);
   return c.json(rowToBook(db.prepare('SELECT * FROM member_books WHERE id = ?').get(id)));
 });
 
@@ -483,26 +540,67 @@ api.get('/genres', (c) =>
 // ---- quests ----
 api.get('/quests', (c) => {
   const m = c.get('member');
-  const quests = db.prepare('SELECT * FROM quests WHERE active = 1 ORDER BY id').all();
-  return c.json(quests.map((q) => questView(q, m.id)));
+  const regular = db.prepare("SELECT * FROM quests WHERE active = 1 AND kind != 'bounty' ORDER BY id").all();
+  // a member sees a bounty if they posted it, it's open to everyone, or they're in its audience
+  const bounties = db.prepare(`
+    SELECT * FROM quests q WHERE active = 1 AND kind = 'bounty'
+      AND (created_by = ?
+           OR NOT EXISTS (SELECT 1 FROM bounty_audience WHERE quest_id = q.id)
+           OR EXISTS (SELECT 1 FROM bounty_audience WHERE quest_id = q.id AND member_id = ?))
+    ORDER BY id DESC`).all(m.id, m.id);
+  return c.json([...regular, ...bounties].map((q) => questView(q, m.id)));
+});
+
+// post a bounty — a member-made challenge for specific people or everyone; reward is auto-priced
+api.post('/me/bounties', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const title = (b.title || '').trim();
+  if (!title) return c.json({ error: 'Give it a title' }, 400);
+  const type = 'book'; // bounties are read-a-book/series tasks
+  const target = 1;
+  const effort = BOUNTY_EFFORT[b.effort] ? b.effort : 'standard';
+  const price = BOUNTY_EFFORT[effort];
+  const ids = Array.isArray(b.audience) ? b.audience.map(Number).filter(Number.isInteger).filter((id) => id !== m.id) : [];
+  const info = db.prepare(
+    "INSERT INTO quests (title, description, type, target, reward_coins, period, requires_approval, active, created_by, kind) VALUES (?, ?, ?, ?, ?, 'once', 1, 1, ?, 'bounty')"
+  ).run(title, b.description || '', type, target, price, m.id);
+  const qid = Number(info.lastInsertRowid);
+  const ins = db.prepare('INSERT OR IGNORE INTO bounty_audience (quest_id, member_id) VALUES (?, ?)');
+  for (const id of ids) if (db.prepare('SELECT 1 FROM members WHERE id = ?').get(id)) ins.run(qid, id);
+  return c.json({ id: qid, rewardCoins: price });
+});
+
+// creator takes their bounty down
+api.post('/me/bounties/:id/cancel', (c) => {
+  const m = c.get('member');
+  const q = db.prepare("SELECT * FROM quests WHERE id = ? AND kind = 'bounty' AND created_by = ?").get(Number(c.req.param('id')), m.id);
+  if (!q) return c.json({ error: 'Not found' }, 404);
+  db.prepare('UPDATE quests SET active = 0 WHERE id = ?').run(q.id);
+  return c.body(null, 204);
 });
 
 api.post('/quests/:id/claim', (c) => {
   const m = c.get('member');
   const q = db.prepare('SELECT * FROM quests WHERE id = ? AND active = 1').get(Number(c.req.param('id')));
   if (!q) return c.json({ error: 'Quest not found' }, 404);
+  const isBounty = q.kind === 'bounty';
+  if (isBounty && q.created_by === m.id) return c.json({ error: "You can't claim your own bounty" }, 400);
   const pk = periodKeyFor(q);
   const existing = db.prepare('SELECT * FROM quest_claims WHERE quest_id = ? AND member_id = ? AND period_key = ?').get(q.id, m.id, pk);
   if (existing && existing.status !== 'rejected') return c.json({ error: 'Already claimed this period' }, 400);
   if (existing) db.prepare('DELETE FROM quest_claims WHERE id = ?').run(existing.id);
 
-  const manualPending = q.type === 'manual' && q.requires_approval;
-  if (!manualPending && q.type !== 'manual') {
-    const prog = questProgress(q, m.id);
+  // measurable tasks must actually be met before claiming ('book' & manual just need a mark-done)
+  const measurable = isBounty ? MEASURABLE_BOUNTY.includes(q.type) : q.type !== 'manual';
+  if (measurable) {
+    const prog = isBounty ? bountyProgress(q, m.id) : questProgress(q, m.id);
     if (prog < q.target) return c.json({ error: 'Not finished yet' }, 400);
   }
 
-  if (manualPending) {
+  // bounties + approval-gated manual tasks go to the admin queue; plain quests pay out now
+  const needsApproval = isBounty || (q.type === 'manual' && q.requires_approval);
+  if (needsApproval) {
     db.prepare('INSERT INTO quest_claims (quest_id, member_id, period_key, status, coins_awarded) VALUES (?, ?, ?, ?, 0)')
       .run(q.id, m.id, pk, 'pending');
     return c.json({ status: 'pending' });
@@ -734,11 +832,37 @@ api.get('/admin/redemptions', (c) => {
 
 api.get('/admin/quest-claims', (c) => {
   const rows = db.prepare(`
-    SELECT qc.id, qc.status, qc.created_at AS createdAt, q.title, q.reward_coins AS rewardCoins,
+    SELECT qc.id, qc.status, qc.created_at AS createdAt, q.title, q.kind, q.reward_coins AS rewardCoins,
            m.name AS member, m.initials, m.color, m.avatar
     FROM quest_claims qc JOIN quests q ON q.id = qc.quest_id JOIN members m ON m.id = qc.member_id
     WHERE qc.status = 'pending' ORDER BY qc.id DESC`).all();
   return c.json(rows);
+});
+
+// sessions a member asked to remove — approving deletes the session AND claws back its coins
+api.get('/admin/session-deletions', (c) => {
+  const rows = db.prepare(`
+    SELECT s.id, s.title, s.medium, s.minutes, s.coins, s.created_at AS createdAt,
+           m.name AS member, m.initials, m.color, m.avatar
+    FROM sessions s JOIN members m ON m.id = s.member_id
+    WHERE s.delete_requested = 1 ORDER BY s.id DESC`).all();
+  return c.json(rows);
+});
+api.post('/admin/session-deletions/:id/approve', (c) => {
+  const id = Number(c.req.param('id'));
+  const s = db.prepare('SELECT * FROM sessions WHERE id = ? AND delete_requested = 1').get(id);
+  if (!s) return c.json({ error: 'Not pending' }, 400);
+  db.exec('BEGIN');
+  try {
+    db.prepare("DELETE FROM coin_txns WHERE reason = 'base-earn' AND ref_id = ?").run(id); // claw back the earned coins
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); return c.json({ error: 'Could not remove session' }, 500); }
+  return c.body(null, 204);
+});
+api.post('/admin/session-deletions/:id/reject', (c) => {
+  db.prepare('UPDATE sessions SET delete_requested = 0 WHERE id = ?').run(Number(c.req.param('id')));
+  return c.body(null, 204);
 });
 
 api.post('/admin/quest-claims/:id/approve', (c) => {
