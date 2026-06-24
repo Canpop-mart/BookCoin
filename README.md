@@ -1,10 +1,3 @@
-# BookCoin 🪙📚
-
-A cozy, self-hosted family reading game. Log the time you read, earn BookCoins,
-grow a gentle monthly nook (leaderboard), and tuck coins into your jar to spend on rewards.
-
-See [DESIGN.md](DESIGN.md) for the full concept, scoring model, and roadmap.
-
 ## Stack
 
 - `server/` is a small JSON API over SQLite (`node:sqlite`, no native build), built with [Hono]. It runs in Docker on a NAS.
