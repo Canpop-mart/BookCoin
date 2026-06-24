@@ -83,7 +83,7 @@ async function submit() {
       <button class="btn" @click="connect"><i class="ti ti-plug" aria-hidden="true"></i> Connect</button>
     </div>
 
-    <!-- step 1: pick a household (skipped when there's only one) -->
+    <!-- household picker; auto-skipped when there's only one household -->
     <div v-else-if="!household" style="width:100%;display:flex;flex-direction:column;gap:10px;margin-top:10px;">
       <div class="sub" style="margin-bottom:2px;">Choose your household</div>
       <button v-for="g in grouped" :key="g.household.id" class="card row"
@@ -97,7 +97,7 @@ async function submit() {
       </button>
     </div>
 
-    <!-- step 2: pick a member within the household -->
+    <!-- member picker for the chosen household -->
     <div v-else-if="!selected" style="width:100%;display:flex;flex-direction:column;gap:12px;margin-top:10px;">
       <button v-if="multiHousehold" class="chip" style="align-self:center;" @click="backToHouseholds">
         <span class="av" :style="{ background: household.color, width: '18px', height: '18px' }"><i class="ti ti-home" style="font-size:10px;" aria-hidden="true"></i></span>
