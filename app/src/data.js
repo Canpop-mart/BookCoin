@@ -17,6 +17,9 @@ export const GENRES = [
   'True crime', 'Self-help', 'Philosophy', 'Travel',
 ];
 
+// covers a reader can pick for a book (shared by the book page and the finish screen)
+export const COVER_EMOJIS = ['', '📕', '📗', '📘', '📙', '📚', '🐉', '🚀', '🔮', '🗺️', '🏰', '💀', '❤️', '🌙', '⭐', '🦄', '🐈', '☕', '🌸', '🔪', '🧪', '⚔️', '👑', '🌊'];
+
 // conscious money anchor: 100 coins = $1 (keep in sync with server/src/coins.js)
 export const COINS_PER_DOLLAR = 100;
 

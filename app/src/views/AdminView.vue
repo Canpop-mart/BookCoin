@@ -34,7 +34,41 @@ const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['
 const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
 const liveRewards = computed(() => rewards.value.filter((r) => r.status !== 'pending'));
 const pendingCount = computed(() => claims.value.length + pendingRewards.value.length + sessionDeletions.value.length);
-const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['households', 'Households'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']];
+const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['households', 'Households'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres'], ['reset', 'Reset']];
+
+// --- download a full database backup ---
+const backingUp = ref(false);
+async function downloadBackup() {
+  backingUp.value = true;
+  try {
+    const res = await fetch((store.serverUrl || '') + '/api/admin/backup', { headers: { Authorization: 'Bearer ' + store.token } });
+    if (!res.ok) throw new Error('Backup failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `bookcoin-backup-${new Date().toISOString().slice(0, 10)}.db`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast.value = 'Backup downloaded';
+  } catch (e) { toast.value = e.message || 'Backup failed'; }
+  finally { backingUp.value = false; }
+}
+
+// --- fresh start (season reset): wipe activity, keep profiles & shelves ---
+const resetConfirm = ref('');
+const resetting = ref(false);
+const resetDone = ref(null);
+async function doReset() {
+  if (resetConfirm.value.trim().toUpperCase() !== 'RESET') return;
+  resetting.value = true;
+  try {
+    const r = await api.admin.resetActivity();
+    resetDone.value = r.cleared;
+    resetConfirm.value = '';
+    await load();
+  } catch (e) { toast.value = e.message; }
+  finally { resetting.value = false; }
+}
 
 const householdName = (id) => households.value.find((h) => h.id === id)?.name || '';
 
@@ -226,7 +260,7 @@ async function addBook(l) {
 
       <!-- HOUSEHOLDS -->
       <template v-if="tab === 'households'">
-        <p class="sub">Households just tidy the sign-in screen — everyone shares one leaderboard, and you choose who each reward is for. Handy once you've got a few families; skip it if everyone's one group.</p>
+        <p class="sub">Households just tidy the sign-in screen. Everyone shares one leaderboard, and you choose who each reward is for. Handy once you've got a few families; skip it if everyone's one group.</p>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div v-for="h in households" :key="h.id" class="card" style="display:flex;flex-direction:column;gap:9px;">
             <div class="row" style="gap:10px;">
@@ -288,7 +322,7 @@ async function addBook(l) {
       <!-- REWARDS -->
       <template v-if="tab === 'rewards'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">{{ rForm.id ? 'Edit reward' : 'Create reward (house — goes live immediately)' }}</div>
+          <div class="sub">{{ rForm.id ? 'Edit reward' : 'Create reward (house, goes live immediately)' }}</div>
           <input v-model="rForm.name" placeholder="Name" />
           <input v-model="rForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
@@ -362,6 +396,40 @@ async function addBook(l) {
             <button aria-label="remove genre" @click="removeGenre(g)" style="background:none;border:none;cursor:pointer;color:var(--ink2);padding:0;display:flex;"><i class="ti ti-x" aria-hidden="true"></i></button>
           </span>
           <div v-if="!genres.length" class="sub">No genres yet.</div>
+        </div>
+      </template>
+
+      <!-- RESET (fresh start for launch / a new season) -->
+      <template v-if="tab === 'reset'">
+        <div class="card" style="display:flex;flex-direction:column;gap:9px;">
+          <div style="font-weight:600;font-size:15px;"><i class="ti ti-download" style="color:var(--sage-d);" aria-hidden="true"></i> Back up your data</div>
+          <p class="sub" style="margin:0;">Download a complete copy of the database (members, sessions, shelves, lists, rewards). Worth grabbing before a fresh start, and now and then for safekeeping.</p>
+          <button class="btn soft" :disabled="backingUp" @click="downloadBackup"><i class="ti ti-download" aria-hidden="true"></i> {{ backingUp ? 'Preparing…' : 'Download a backup' }}</button>
+        </div>
+
+        <div class="card" style="background:#FFF7F3;border-color:#F2D2C5;display:flex;flex-direction:column;gap:12px;">
+          <div style="font-weight:600;font-size:15px;"><i class="ti ti-refresh" style="color:var(--terra-d);" aria-hidden="true"></i> Fresh start</div>
+          <p class="sub" style="margin:0;">Clears everyone's reading history so you can launch, or start a new season, from zero.</p>
+          <div class="row" style="gap:9px;align-items:flex-start;">
+            <i class="ti ti-trash" style="color:var(--terra-d);font-size:16px;margin-top:2px;flex-shrink:0;" aria-hidden="true"></i>
+            <div class="sub"><strong style="color:var(--ink);">Clears:</strong> hours &amp; sessions, coin balances, quest and challenge claims, reward purchases, and past month-end results.</div>
+          </div>
+          <div class="row" style="gap:9px;align-items:flex-start;">
+            <i class="ti ti-shield-check" style="color:var(--sage-d);font-size:16px;margin-top:2px;flex-shrink:0;" aria-hidden="true"></i>
+            <div class="sub"><strong style="color:var(--ink);">Keeps:</strong> profiles, shelves and finished books (ratings, reviews, covers), reading lists, the reward catalog, and your quests.</div>
+          </div>
+
+          <template v-if="!resetDone">
+            <div style="height:1px;background:#F2D2C5;"></div>
+            <div class="sub">Type <strong style="color:var(--terra-d);letter-spacing:1px;">RESET</strong> to confirm. This can't be undone.</div>
+            <input v-model="resetConfirm" placeholder="RESET" autocapitalize="characters" autocorrect="off" spellcheck="false" />
+            <button class="btn" style="background:var(--terra);" :disabled="resetConfirm.trim().toUpperCase() !== 'RESET' || resetting" @click="doReset">
+              <i class="ti ti-trash" aria-hidden="true"></i> {{ resetting ? 'Clearing…' : 'Clear all activity' }}
+            </button>
+          </template>
+          <div v-else class="card pop-in" style="background:var(--sage-bg);border-color:transparent;">
+            <div class="sub" style="color:var(--sage-d);"><i class="ti ti-check" aria-hidden="true"></i> Fresh start done. Cleared {{ resetDone.sessions }} session{{ resetDone.sessions === 1 ? '' : 's' }}, {{ resetDone.coinTxns }} coin entr{{ resetDone.coinTxns === 1 ? 'y' : 'ies' }}, and {{ resetDone.redemptions }} purchase{{ resetDone.redemptions === 1 ? '' : 's' }}. Profiles and shelves are untouched.</div>
+          </div>
         </div>
       </template>
     </template>

@@ -43,7 +43,7 @@ async function done() {
     <CoinBurst v-if="burst" />
     <Mascot :size="80" mood="cheer" />
     <div class="h" style="font-size:24px;">{{ monthName(summary.month) }} results</div>
-    <p class="sub" style="margin-top:-8px;">{{ replay ? 'Last month’s finale.' : 'The reading month is over — here’s how it shook out!' }}</p>
+    <p class="sub" style="margin-top:-8px;">{{ replay ? 'Last month’s finale.' : 'The reading month is over. Here’s how it shook out!' }}</p>
 
     <!-- podium -->
     <div class="podium">

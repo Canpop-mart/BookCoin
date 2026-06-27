@@ -72,6 +72,22 @@ async function setAppearance(patch) {
   await load();
 }
 
+// change your own PIN
+const pinForm = ref({ current: '', next: '' });
+const pinMsg = ref('');
+const savingPin = ref(false);
+async function savePin() {
+  pinMsg.value = '';
+  if (!/^\d{4,8}$/.test(pinForm.value.next)) { pinMsg.value = 'New PIN must be 4 to 8 digits'; return; }
+  savingPin.value = true;
+  try {
+    await api.setPin({ currentPin: pinForm.value.current, pin: pinForm.value.next });
+    pinForm.value = { current: '', next: '' };
+    pinMsg.value = 'PIN updated';
+  } catch (e) { pinMsg.value = e.message; }
+  finally { savingPin.value = false; }
+}
+
 const openLog = ref({});
 const toggleLog = (id) => { openLog.value[id] = !openLog.value[id]; };
 async function requestDelete(s) {
@@ -201,6 +217,15 @@ async function logout() {
               </button>
             </div>
           </div>
+          <div>
+            <div class="sub" style="margin-bottom:8px;"><i class="ti ti-lock" style="color:var(--terra);" aria-hidden="true"></i> Change PIN</div>
+            <div class="row" style="gap:8px;flex-wrap:wrap;">
+              <input v-model="pinForm.current" type="password" inputmode="numeric" autocomplete="off" placeholder="Current PIN" style="flex:1;min-width:120px;" />
+              <input v-model="pinForm.next" type="password" inputmode="numeric" autocomplete="new-password" placeholder="New PIN" style="flex:1;min-width:120px;" />
+              <button class="chip" :disabled="savingPin" style="background:var(--sage-bg);color:var(--sage-d);" @click="savePin"><i class="ti ti-check" aria-hidden="true"></i> Save</button>
+            </div>
+            <div v-if="pinMsg" class="sub" style="margin-top:6px;" :style="{ color: pinMsg === 'PIN updated' ? 'var(--sage-d)' : 'var(--terra-d)' }">{{ pinMsg }}</div>
+          </div>
         </template>
       </div>
 
@@ -276,7 +301,7 @@ async function logout() {
           <div v-if="s.quote" class="sub" style="font-style:italic;">“{{ s.quote }}”</div>
           <div v-if="isMe" class="row" style="gap:8px;">
             <template v-if="s.deleteRequested">
-              <span class="sub" style="flex:1;"><i class="ti ti-clock" aria-hidden="true"></i> Removal requested — waiting for an admin</span>
+              <span class="sub" style="flex:1;"><i class="ti ti-clock" aria-hidden="true"></i> Removal requested, waiting for an admin</span>
               <button class="chip" @click="cancelDelete(s)">Cancel request</button>
             </template>
             <button v-else class="chip" style="color:var(--terra-d);" @click="requestDelete(s)"><i class="ti ti-trash" aria-hidden="true"></i> Request removal</button>

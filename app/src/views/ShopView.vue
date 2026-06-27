@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { api } from '../api';
 import { store } from '../store';
+import { hapticWin } from '../haptics';
 import { usd } from '../data';
 
 const data = ref(null);
@@ -23,6 +24,20 @@ function setView(v) { view.value = v; menuOpen.value = false; }
 // people you can offer a reward to — everyone except yourself
 const otherMembers = computed(() => members.value.filter((m) => m.id !== store.member.id));
 const memberName = (id) => members.value.find((m) => m.id === id)?.name || '';
+
+// --- filter the store by who's offering ---
+const ownerFilter = ref(null); // null = everyone
+const owners = computed(() => {
+  const seen = new Map();
+  for (const r of (data.value?.rewards || [])) {
+    if (!seen.has(r.ownerId)) seen.set(r.ownerId, { id: r.ownerId, name: r.ownerName, avatar: r.ownerAvatar, color: r.ownerColor, initials: r.ownerInitials });
+  }
+  return [...seen.values()];
+});
+const filteredRewards = computed(() => {
+  const all = data.value?.rewards || [];
+  return ownerFilter.value ? all.filter((r) => r.ownerId === ownerFilter.value) : all;
+});
 function toggleAudience(id) {
   const i = form.audience.indexOf(id);
   if (i === -1) form.audience.push(id); else form.audience.splice(i, 1);
@@ -62,7 +77,7 @@ async function run(fn, msg) {
 }
 function redeem(r) {
   if (r.ownerId === store.member.id || data.value.balance < r.costCoins) return;
-  run(async () => { await api.redeemReward(r.id); burst.value = true; setTimeout(() => { burst.value = false; }, 1300); }, `${r.name} redeemed — ${r.ownerName} will deliver it`);
+  run(async () => { await api.redeemReward(r.id); burst.value = true; hapticWin(); setTimeout(() => { burst.value = false; }, 1300); }, `${r.name} redeemed. ${r.ownerName} will deliver it`);
 }
 function submitOffer() {
   if (!form.name.trim()) { toast.value = 'Give it a name'; return; }
@@ -70,7 +85,7 @@ function submitOffer() {
   const payload = { name: form.name, description: form.description, costCoins: form.costCoins, scope: form.scope, audience: form.audience };
   const isAdmin = store.member.role === 'admin';
   const msg = form.editingId
-    ? (isAdmin ? 'Reward updated' : 'Saved — sent to an admin for re-approval')
+    ? (isAdmin ? 'Reward updated' : 'Saved. Sent to an admin for re-approval')
     : (isAdmin ? 'Reward added' : 'Sent to an admin for approval');
   const action = form.editingId ? () => api.editReward(form.editingId, payload) : () => api.createReward(payload);
   run(action, msg).then(() => { showOffer.value = false; resetForm(); });
@@ -133,9 +148,16 @@ function submitOffer() {
     <template v-if="view === 'store'">
       <button v-if="!showOffer" class="chip" style="align-self:flex-start;" @click="openOffer"><i class="ti ti-plus" aria-hidden="true"></i> Offer a reward</button>
 
-      <div v-if="!data.rewards.length" class="card sub">No rewards yet — offer one above!</div>
+      <div v-if="owners.length > 1" class="row" style="gap:7px;flex-wrap:wrap;">
+        <button class="chip" :class="{ on: ownerFilter === null }" @click="ownerFilter = null"><i class="ti ti-users" aria-hidden="true"></i> Everyone</button>
+        <button v-for="o in owners" :key="o.id" class="chip" :class="{ on: ownerFilter === o.id }" style="gap:6px;" @click="ownerFilter = o.id">
+          <Avatar :avatar="o.avatar" :color="o.color" :initials="o.initials" :size="18" /> {{ o.name }}
+        </button>
+      </div>
+
+      <div v-if="!filteredRewards.length" class="card sub">{{ ownerFilter ? 'No rewards from this person.' : 'No rewards yet. Offer one above!' }}</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:11px;">
-        <div v-for="r in data.rewards" :key="r.id" class="card" style="display:flex;gap:13px;align-items:center;">
+        <div v-for="r in filteredRewards" :key="r.id" class="card" style="display:flex;gap:13px;align-items:center;">
           <div style="width:48px;height:48px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"
             :style="{ background: tier[tierFor(r.costCoins)].bg, color: tier[tierFor(r.costCoins)].fg }">
             <i class="ti ti-gift" style="font-size:24px;" aria-hidden="true"></i>
@@ -161,11 +183,11 @@ function submitOffer() {
     <!-- ============ MY OFFERS ============ -->
     <template v-else-if="view === 'offers'">
       <div v-if="!offers.toFulfill.length && !offers.mine.length" class="card sub">
-        You haven't offered any rewards yet — head to the Store to add one.
+        You haven't offered any rewards yet. Head to the Store to add one.
       </div>
 
       <template v-if="offers.toFulfill.length">
-        <div class="sub"><i class="ti ti-bell" style="color:var(--terra);" aria-hidden="true"></i> Someone bought yours — deliver it</div>
+        <div class="sub"><i class="ti ti-bell" style="color:var(--terra);" aria-hidden="true"></i> Someone bought yours. Deliver it</div>
         <div v-for="rd in offers.toFulfill" :key="rd.id" class="card row" style="gap:10px;background:#FFF7F3;border-color:#F2D2C5;">
           <Avatar :member="rd" :size="30" />
           <div style="flex:1;"><div style="font-weight:600;">{{ rd.name }}</div><div class="sub">for {{ rd.member }} · you earn {{ Math.ceil(rd.costCoins * 0.2) }}</div></div>
@@ -187,7 +209,7 @@ function submitOffer() {
 
     <!-- ============ RECEIPTS ============ -->
     <template v-else>
-      <div v-if="!redemptions.length" class="card sub">Nothing bought yet — redeem a reward from the Store.</div>
+      <div v-if="!redemptions.length" class="card sub">Nothing bought yet. Redeem a reward from the Store.</div>
       <div v-for="rd in redemptions" :key="rd.id" class="card row" style="justify-content:space-between;padding:11px 14px;">
         <span>{{ rd.name }}</span>
         <span class="chip" :style="statusStyle(rd.status)">{{ rd.status === 'requested' ? 'pending' : rd.status }}</span>

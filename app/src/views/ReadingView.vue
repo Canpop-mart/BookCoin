@@ -19,11 +19,12 @@ const seconds = computed(() => { now.value; return Math.floor(store.elapsedMs() 
 const title = computed({ get: () => store.timer?.title || '', set: (v) => store.setTimerTitle(v) });
 
 function toggle() { running.value ? store.pauseTimer() : store.resumeTimer(); }
-function finish() {
+// finishBook = the whole book is done; the log screen pre-checks "finished" and shelves it on save
+function finish(finishBook = false) {
   const seconds = Math.max(1, Math.round(store.elapsedMs() / 1000));
   const t = store.timer?.title || '';
   store.clearTimer();
-  store.draft = { seconds, title: t };
+  store.draft = { seconds, title: t, finishBook };
   router.replace('/log');
 }
 function cancel() { store.clearTimer(); router.replace('/'); }
@@ -44,17 +45,22 @@ function cancel() { store.clearTimer(); router.replace('/'); }
       <div style="font-size:54px;font-weight:700;font-family:'Quicksand';color:var(--ink);">{{ fmtClock(seconds) }}</div>
       <div class="sub">
         <i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i>
-        {{ running ? "You're earning coins as you read" : "Paused — resume when you're ready" }}
+        {{ running ? "You're earning coins as you read" : "Paused. Resume when you're ready." }}
       </div>
-      <div class="sub" style="font-size:12px;opacity:.8;max-width:240px;">Leave the app if you like — your time keeps counting.</div>
+      <div class="sub" style="font-size:12px;opacity:.8;max-width:240px;">Leave the app if you like. Your time keeps counting.</div>
     </div>
 
-    <div class="row" style="gap:10px;">
-      <button class="btn soft" @click="toggle">
-        <i :class="running ? 'ti ti-player-pause' : 'ti ti-player-play'" aria-hidden="true"></i>
-        {{ running ? 'Pause' : 'Resume' }}
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div class="row" style="gap:10px;">
+        <button class="btn soft" @click="toggle">
+          <i :class="running ? 'ti ti-player-pause' : 'ti ti-player-play'" aria-hidden="true"></i>
+          {{ running ? 'Pause' : 'Resume' }}
+        </button>
+        <button class="btn" @click="finish(false)"><i class="ti ti-check" aria-hidden="true"></i> Done reading</button>
+      </div>
+      <button class="btn" style="background:var(--gold);color:var(--gold-d);" @click="finish(true)">
+        <i class="ti ti-confetti" aria-hidden="true"></i> I finished the book
       </button>
-      <button class="btn" @click="finish"><i class="ti ti-check" aria-hidden="true"></i> Finish</button>
     </div>
   </div>
 </template>

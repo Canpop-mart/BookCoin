@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
+import { hapticWin } from '../haptics';
 import { claimableQuests } from '../data';
 
 const router = useRouter();
@@ -70,6 +71,7 @@ async function claim(q) {
     } else {
       toast.value = `+${r.coins} coins!`;
       burst.value = true;
+      hapticWin();
       setTimeout(() => { burst.value = false; }, 1300);
     }
     await load();
@@ -153,7 +155,7 @@ async function claim(q) {
 
     <!-- ============ CHALLENGES (manual) ============ -->
     <template v-else-if="view === 'challenges'">
-      <p class="sub" style="margin-top:-2px;">Real-world tasks — do them, then mark them complete.</p>
+      <p class="sub" style="margin-top:-2px;">Real-world tasks. Do them, then mark them complete.</p>
       <div class="row" style="gap:16px;justify-content:center;margin-top:-4px;">
         <span class="sub"><i class="ti ti-flag" style="color:var(--terra-d);" aria-hidden="true"></i> do it yourself</span>
         <span class="sub"><i class="ti ti-shield-check" style="color:var(--terra-d);" aria-hidden="true"></i> needs approval</span>
@@ -188,7 +190,7 @@ async function claim(q) {
 
     <!-- ============ BOUNTIES (member-posted) ============ -->
     <template v-else>
-      <p class="sub" style="margin-top:-2px;">Challenge someone (or everyone) to read a book or series. You pick the effort — the coins follow.</p>
+      <p class="sub" style="margin-top:-2px;">Challenge someone (or everyone) to read a book or series. You pick the effort, and the coins follow.</p>
       <button class="chip" style="align-self:flex-start;" @click="showBounty = !showBounty"><i class="ti ti-plus" aria-hidden="true"></i> Post a bounty</button>
 
       <div v-if="showBounty" class="card" style="display:flex;flex-direction:column;gap:9px;">
@@ -252,7 +254,7 @@ async function claim(q) {
         </div>
       </template>
 
-      <div v-if="!bounties.length && !showBounty" class="card sub" style="text-align:center;">No bounties yet — post one to challenge someone.</div>
+      <div v-if="!bounties.length && !showBounty" class="card sub" style="text-align:center;">No bounties yet. Post one to challenge someone.</div>
     </template>
   </div>
 </template>

@@ -24,6 +24,7 @@ const myIndex = computed(() => rows.value.findIndex((r) => r.memberId === store.
 const me = computed(() => rows.value[myIndex.value]);
 const ahead = computed(() => (myIndex.value > 0 ? rows.value[myIndex.value - 1] : null));
 const gapAhead = computed(() => (ahead.value ? Math.max(0, ahead.value.minutes - (me.value?.minutes || 0)) : 0));
+const topMinutes = computed(() => Math.max(1, ...rows.value.map((r) => r.minutes)));
 const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
 </script>
 
@@ -40,19 +41,24 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
     </div>
 
     <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
-      <div v-for="r in rows" :key="r.memberId" class="card row" style="padding:11px 13px;"
+      <div v-for="r in rows" :key="r.memberId" class="card" style="padding:11px 13px;cursor:pointer;display:flex;flex-direction:column;gap:8px;"
+        @click="router.push('/profile/' + r.memberId)" :title="`Visit ${r.name}`"
         :style="r.memberId === store.member.id ? { background: 'var(--blush-bg)', borderColor: '#F2D2C5' } : {}">
-        <span class="av" style="width:28px;height:28px;font-size:12px;"
-          :style="r.rank === 1 && r.minutes > 0 ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#F0E0C8', color: '#86735A' }">
-          <i v-if="r.rank === 1 && r.minutes > 0" class="ti ti-crown" aria-hidden="true"></i>
-          <template v-else>{{ r.rank }}</template>
-        </span>
-        <Avatar :member="r" :size="30" />
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:600;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></div>
-          <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ r.coins }}{{ period === 'all' ? ' earned' : '' }}</div>
+        <div class="row" style="width:100%;">
+          <span class="av" style="width:28px;height:28px;font-size:12px;"
+            :style="r.rank === 1 && r.minutes > 0 ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#F0E0C8', color: '#86735A' }">
+            <i v-if="r.rank === 1 && r.minutes > 0" class="ti ti-crown" aria-hidden="true"></i>
+            <template v-else>{{ r.rank }}</template>
+          </span>
+          <Avatar :member="r" :size="30" />
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></div>
+            <div class="sub"><i class="ti ti-coin" style="color:var(--gold);" aria-hidden="true"></i> {{ r.coins }}{{ period === 'all' ? ' earned' : '' }}</div>
+          </div>
+          <div style="font-weight:700;font-family:'Quicksand';color:var(--ink);white-space:nowrap;">{{ fmtDuration(r.minutes) }}</div>
+          <i class="ti ti-chevron-right" style="color:var(--ink2);flex-shrink:0;margin-left:-2px;" aria-hidden="true"></i>
         </div>
-        <div style="font-weight:700;font-family:'Quicksand';color:var(--ink);white-space:nowrap;">{{ fmtDuration(r.minutes) }}</div>
+        <div v-if="r.minutes > 0" class="bar" style="height:5px;background:#EFE6D5;"><span :style="{ width: pct(r.minutes, topMinutes) + '%', background: r.rank === 1 ? 'var(--gold)' : 'var(--terra)' }"></span></div>
       </div>
     </div>
 

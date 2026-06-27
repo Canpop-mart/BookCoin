@@ -5,7 +5,7 @@ import { store } from '../store';
 
 const SLIDES = [
   { mascot: true, title: 'Welcome to BookCoin', body: 'Read, earn coins for your time, and enjoy a little friendly competition with your people.' },
-  { icon: 'ti-player-play', title: 'Log your reading', body: 'Tap Start reading to time a session, or log one yourself. Minutes are what count — pages are just for fun.' },
+  { icon: 'ti-player-play', title: 'Log your reading', body: 'Tap Start reading to time a session, or log one yourself. Minutes are what count, and pages are just for fun.' },
   { icon: 'ti-wand', title: 'Quests & challenges', body: 'Earn bonus coins for monthly goals, and for trying new genres and formats.' },
   { icon: 'ti-gift', title: 'Rewards & ranks', body: 'Spend coins on real treats, climb the monthly leaderboard, and celebrate at the month-end ceremony.' },
 ];

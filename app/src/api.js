@@ -27,6 +27,7 @@ export const api = {
   requestDeleteSession: (id) => req(`/me/sessions/${id}/request-delete`, { method: 'POST' }),
   cancelDeleteSession: (id) => req(`/me/sessions/${id}/cancel-delete`, { method: 'POST' }),
   setGoal: (minutes) => req('/me/goal', { method: 'POST', body: { minutes } }),
+  setPin: (b) => req('/me/pin', { method: 'POST', body: b }),
   setAppearance: (b) => req('/me/appearance', { method: 'POST', body: b }),
   markOnboarded: () => req('/me/onboarded', { method: 'POST' }),
   activity: () => req('/activity'),
@@ -56,6 +57,11 @@ export const api = {
   fulfillRedemption: (id) => req(`/redemptions/${id}/fulfill`, { method: 'POST' }),
   cancelRedemption: (id) => req(`/redemptions/${id}/cancel`, { method: 'POST' }),
   lists: () => req('/lists'),
+  createList: (b) => req('/me/lists', { method: 'POST', body: b }),
+  updateList: (id, b) => req(`/me/lists/${id}`, { method: 'PATCH', body: b }),
+  deleteList: (id) => req(`/me/lists/${id}`, { method: 'DELETE' }),
+  addListBook: (id, b) => req(`/me/lists/${id}/books`, { method: 'POST', body: b }),
+  removeListBook: (id, bookId) => req(`/me/lists/${id}/books/${bookId}`, { method: 'DELETE' }),
   genres: () => req('/genres'),
   households: () => req('/households'),
 
@@ -92,5 +98,6 @@ export const api = {
     genres: () => req('/admin/genres'),
     createGenre: (b) => req('/admin/genres', { method: 'POST', body: b }),
     deleteGenre: (id) => req(`/admin/genres/${id}`, { method: 'DELETE' }),
+    resetActivity: () => req('/admin/reset-activity', { method: 'POST' }),
   },
 };

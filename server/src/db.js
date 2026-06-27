@@ -212,6 +212,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS reward_audience (
 // retire the old household-scoped rewards: make any of them visible to everyone (idempotent)
 db.exec("UPDATE rewards SET scope = 'everyone', household_id = NULL WHERE scope = 'household'");
 
+// --- migration: member-owned reading lists (owner_id null = curated/house list) + visibility ---
+const listCols = db.prepare('PRAGMA table_info(lists)').all().map((c) => c.name);
+if (!listCols.includes('owner_id')) db.exec('ALTER TABLE lists ADD COLUMN owner_id INTEGER REFERENCES members(id)');
+if (!listCols.includes('visibility')) db.exec("ALTER TABLE lists ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'");
+
 // --- one-time bootstrap: seed a single admin on a brand-new database ---
 // (real members are created from the admin portal; the `seeded` flag means
 //  clearing all members later never re-creates a placeholder)

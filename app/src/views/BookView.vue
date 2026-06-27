@@ -2,7 +2,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
-import { fmtDuration, MEDIUMS, bookSpine } from '../data';
+import { fmtDuration, MEDIUMS, bookSpine, COVER_EMOJIS } from '../data';
 
 const route = useRoute();
 const router = useRouter();
@@ -21,7 +21,6 @@ const spineBg = computed(() => (book.value ? bookSpine(book.value).bg : '#C9A06E
 const mediumLabel = (m) => MEDIUMS.find((x) => x.id === m)?.label || m;
 const fmtDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 
-const COVER_EMOJIS = ['', '📕', '📗', '📘', '📙', '📚', '🐉', '🚀', '🔮', '🗺️', '🏰', '💀', '❤️', '🌙', '⭐', '🦄', '🐈', '☕', '🌸', '🔪', '🧪', '⚔️', '👑', '🌊'];
 const STATUSES = [['want', 'Want to read', 'ti-bookmark'], ['reading', 'Reading', 'ti-book'], ['finished', 'Finished', 'ti-check']];
 
 async function load() { data.value = await api.book(route.params.id); }
@@ -30,8 +29,13 @@ watch(() => route.params.id, load);
 
 async function save(patch, after) {
   busy.value = true;
-  try { await api.updateBook(book.value.id, patch); await load(); if (after) after(); }
-  finally { busy.value = false; }
+  const justFinished = patch.status === 'finished' && book.value.status !== 'finished';
+  try {
+    await api.updateBook(book.value.id, patch);
+    if (justFinished) { router.push('/finished/' + book.value.id); return; } // celebrate + review
+    await load();
+    if (after) after();
+  } finally { busy.value = false; }
 }
 function startEditMeta() { meta.title = book.value.title; meta.author = book.value.author || ''; editMeta.value = true; }
 function saveMeta() { if (!meta.title.trim()) return; save({ title: meta.title.trim(), author: meta.author.trim() }, () => { editMeta.value = false; }); }
@@ -122,7 +126,7 @@ async function remove() {
 
     <!-- the trophy room: every session with this book -->
     <div class="sub" style="margin-top:2px;"><i class="ti ti-history" aria-hidden="true"></i> Your time with this book</div>
-    <div v-if="!sessions.length" class="card sub" style="text-align:center;">No sessions logged for this title yet — when you read it and log time, your moments collect here.</div>
+    <div v-if="!sessions.length" class="card sub" style="text-align:center;">No sessions logged for this title yet. When you read it and log time, your moments collect here.</div>
     <div v-else class="stagger" style="display:flex;flex-direction:column;gap:10px;">
       <div v-for="s in sessions" :key="s.id" class="card" style="display:flex;flex-direction:column;gap:7px;">
         <div class="row" style="justify-content:space-between;">

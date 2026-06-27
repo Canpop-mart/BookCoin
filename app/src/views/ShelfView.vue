@@ -10,15 +10,28 @@ const loading = ref(true);
 const busy = ref(null);
 const showAdd = ref(false);
 const form = reactive({ title: '', author: '', status: 'reading' });
+const q = ref('');
 
 async function load() { try { books.value = await api.books(); } finally { loading.value = false; } }
 onMounted(load);
 
+// totals (for the summary header) stay unfiltered; the lists below filter by the search box
 const reading = computed(() => books.value.filter((b) => b.status === 'reading'));
 const want = computed(() => books.value.filter((b) => b.status === 'want'));
 const finished = computed(() => books.value.filter((b) => b.status === 'finished'));
 const thisYear = String(new Date().getFullYear());
 const finishedThisYear = computed(() => finished.value.filter((b) => (b.finishedAt || b.createdAt || '').slice(0, 4) === thisYear).length);
+
+const showSearch = computed(() => books.value.length >= 6);
+const searching = computed(() => q.value.trim().length > 0);
+function matchesQ(b) {
+  const s = q.value.trim().toLowerCase();
+  return !s || (b.title || '').toLowerCase().includes(s) || (b.author || '').toLowerCase().includes(s);
+}
+const readingShown = computed(() => reading.value.filter(matchesQ));
+const wantShown = computed(() => want.value.filter(matchesQ));
+const finishedShown = computed(() => finished.value.filter(matchesQ));
+const noMatches = computed(() => searching.value && !readingShown.value.length && !wantShown.value.length && !finishedShown.value.length);
 
 // stable per-book spine look (shared with the profile mini-shelf)
 function spine(b) {
@@ -38,7 +51,11 @@ async function add() {
 }
 async function setStatus(b, status) {
   busy.value = b.id;
-  try { await api.updateBook(b.id, { status }); await load(); } finally { busy.value = null; }
+  try {
+    await api.updateBook(b.id, { status });
+    if (status === 'finished') { router.push('/finished/' + b.id); return; } // celebrate + review
+    await load();
+  } finally { busy.value = null; }
 }
 async function remove(b) {
   if (!confirm(`Remove “${b.title}” from your shelf?`)) return;
@@ -69,19 +86,27 @@ async function remove(b) {
       <input v-model="form.title" placeholder="Book title" />
       <input v-model="form.author" placeholder="Author (optional)" />
       <div class="row" style="gap:7px;">
-        <button class="chip" :class="{ on: form.status === 'reading' }" style="flex:1;justify-content:center;" @click="form.status = 'reading'"><i class="ti ti-book" aria-hidden="true"></i> Reading</button>
+        <button class="chip" :class="{ on: form.status === 'reading' }" style="flex:1;justify-content:center;" @click="form.status = 'reading'"><i class="ti ti-book" aria-hidden="true"></i> Reading now</button>
         <button class="chip" :class="{ on: form.status === 'want' }" style="flex:1;justify-content:center;" @click="form.status = 'want'"><i class="ti ti-bookmark" aria-hidden="true"></i> Want to read</button>
+        <InfoBubble text="Books start as Reading now or Want to read. You mark one finished later, from its page or your shelf." />
       </div>
-      <button class="btn" :disabled="busy === 'add' || !form.title.trim()" @click="add"><i class="ti ti-check" aria-hidden="true"></i> Add to shelf</button>
+      <button class="btn" :disabled="busy === 'add' || !form.title.trim()" @click="add"><i class="ti ti-check" aria-hidden="true"></i> {{ form.status === 'reading' ? 'Start reading' : 'Save for later' }}</button>
+    </div>
+
+    <div v-if="showSearch" class="row" style="gap:8px;position:relative;">
+      <i class="ti ti-search" style="position:absolute;left:13px;color:var(--ink2);font-size:16px;" aria-hidden="true"></i>
+      <input v-model="q" placeholder="Search your books by title or author" style="padding-left:36px;" aria-label="Search your books" />
+      <button v-if="searching" class="chip" aria-label="Clear search" @click="q = ''"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
 
     <div v-if="loading" class="card sub">Loading your shelf…</div>
+    <div v-if="!loading && noMatches" class="card sub" style="text-align:center;">No books match “{{ q.trim() }}”.</div>
 
     <!-- READING NOW -->
-    <template v-if="!loading && reading.length">
+    <template v-if="!loading && readingShown.length">
       <div class="sub" style="margin-top:2px;"><i class="ti ti-book" aria-hidden="true"></i> Reading now</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
-        <div v-for="b in reading" :key="b.id" class="card row" style="gap:12px;">
+        <div v-for="b in readingShown" :key="b.id" class="card row" style="gap:12px;">
           <button class="av" style="width:38px;height:50px;border:none;border-radius:4px 7px 7px 4px;flex-shrink:0;cursor:pointer;font-size:22px;" :style="{ background: spine(b).bg }" title="Open" @click="open(b)"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-book" style="font-size:18px;color:#fff;opacity:.9;" aria-hidden="true"></i></button>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div>
@@ -94,11 +119,11 @@ async function remove(b) {
     </template>
 
     <!-- THE BOOKSHELF -->
-    <div v-if="!loading" class="sub" style="margin-top:4px;"><i class="ti ti-books" aria-hidden="true"></i> Finished — your collection</div>
-    <div v-if="!loading" class="bookcase">
+    <div v-if="!loading && (!searching || finishedShown.length)" class="sub" style="margin-top:4px;"><i class="ti ti-books" aria-hidden="true"></i> Your finished collection</div>
+    <div v-if="!loading && (!searching || finishedShown.length)" class="bookcase">
       <div v-if="!finished.length" class="shelf-empty">Finish a book and its spine appears here. Your collection grows as you read.</div>
       <div v-else class="shelf">
-        <div v-for="b in finished" :key="b.id" class="slot">
+        <div v-for="b in finishedShown" :key="b.id" class="slot">
           <button class="spine" :style="{ height: spine(b).height + 'px', width: spine(b).width + 'px', background: spine(b).bg }"
             @click="open(b)" :title="b.title">
             <span class="spine-emoji" v-if="b.emoji">{{ b.emoji }}</span>
@@ -110,10 +135,10 @@ async function remove(b) {
     </div>
 
     <!-- WANT TO READ -->
-    <template v-if="!loading && want.length">
+    <template v-if="!loading && wantShown.length">
       <div class="sub" style="margin-top:4px;"><i class="ti ti-bookmark" aria-hidden="true"></i> Up next</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:8px;">
-        <div v-for="b in want" :key="b.id" class="card row" style="gap:11px;padding:10px 14px;">
+        <div v-for="b in wantShown" :key="b.id" class="card row" style="gap:11px;padding:10px 14px;">
           <button class="av" style="width:30px;height:40px;border:none;border-radius:3px 6px 6px 3px;flex-shrink:0;cursor:pointer;font-size:17px;background:#EAE0D2;color:#8A7660;" title="Open" @click="open(b)"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-bookmark" style="font-size:14px;" aria-hidden="true"></i></button>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div>

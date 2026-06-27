@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
@@ -11,12 +11,15 @@ const profile = ref(null);
 const lb = ref(null);
 const activity = ref([]);
 const comTab = ref('leaders');
+const ringPct = ref(0); // starts empty so the goal ring sweeps in on load
 
 onMounted(async () => {
   const [p, l, a] = await Promise.all([
     api.profile(store.member.id), api.leaderboard('month'), api.activity(),
   ]);
   profile.value = p; lb.value = l; activity.value = a;
+  await nextTick();
+  requestAnimationFrame(() => { ringPct.value = goalPct.value; });
 });
 
 const rows = computed(() => lb.value?.rows || []);
@@ -86,7 +89,7 @@ function ago(ts) {
           <div style="position:relative;width:52px;height:52px;flex-shrink:0;">
             <svg viewBox="0 0 36 36" width="52" height="52" style="display:block;">
               <circle cx="18" cy="18" r="15.6" fill="none" stroke="var(--line)" stroke-width="3.4" />
-              <circle cx="18" cy="18" r="15.6" fill="none" :stroke="goalMet ? 'var(--terra)' : 'var(--sage)'" stroke-width="3.4" stroke-linecap="round" pathLength="100" :stroke-dasharray="`${goalPct} 100`" transform="rotate(-90 18 18)" />
+              <circle cx="18" cy="18" r="15.6" fill="none" :stroke="goalMet ? 'var(--terra)' : 'var(--sage)'" stroke-width="3.4" stroke-linecap="round" pathLength="100" :stroke-dasharray="`${ringPct} 100`" style="transition:stroke-dasharray .9s cubic-bezier(.4,0,.2,1);" transform="rotate(-90 18 18)" />
             </svg>
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;font-family:'Quicksand';">{{ Math.round(goalPct) }}%</div>
           </div>
@@ -129,7 +132,7 @@ function ago(ts) {
         <button class="chip" style="align-self:center;margin-top:2px;" @click="router.push('/nook')">Full leaderboard · {{ daysLeft }}d left <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
       </template>
       <template v-else>
-        <div v-if="!activity.length" class="sub" style="text-align:center;">No activity yet — be the first to log a session.</div>
+        <div v-if="!activity.length" class="sub" style="text-align:center;">No activity yet. Be the first to log a session.</div>
         <div v-for="a in activity.slice(0, 6)" :key="a.id" class="row" style="gap:10px;align-items:flex-start;">
           <Avatar :member="a" :size="28" />
           <div style="flex:1;font-size:14px;line-height:1.4;">

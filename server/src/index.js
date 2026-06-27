@@ -2,7 +2,7 @@ import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
@@ -368,10 +368,22 @@ api.post('/sessions', async (c) => {
   db.prepare('INSERT INTO coin_txns (member_id, amount, reason, ref_id) VALUES (?, ?, ?, ?)')
     .run(m.id, coins, 'base-earn', info.lastInsertRowid);
 
+  // --- milestones (so the app can celebrate the moment) ---
+  const goalMinutes = m.monthly_goal_minutes || 0;
+  const afterMonth = db.prepare("SELECT COALESCE(SUM(minutes),0) AS n FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?").get(m.id, monthKey()).n;
+  const goalJustMet = goalMinutes > 0 && (afterMonth - minutes) < goalMinutes && afterMonth >= goalMinutes;
+  const today = new Date().toISOString().slice(0, 10);
+  const days = new Set(db.prepare('SELECT DISTINCT substr(created_at,1,10) AS d FROM sessions WHERE member_id = ?').all(m.id).map((r) => r.d));
+  let streak = 0; const d = new Date();
+  while (days.has(d.toISOString().slice(0, 10))) { streak++; d.setUTCDate(d.getUTCDate() - 1); }
+  const todays = db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE member_id = ? AND substr(created_at,1,10) = ?').get(m.id, today).n;
+  const streakHit = (todays === 1 && (streak === 7 || streak === 30)) ? streak : null; // fire once, on the day it's reached
+
   return c.json({
     sessionId: Number(info.lastInsertRowid),
     coins, base: baseCoins(minutes), multiplier, isNewGenre, minutes,
     balance: balance(m.id),
+    goalMinutes, monthMinutes: afterMonth, goalJustMet, streak, streakHit,
   });
 });
 
@@ -498,6 +510,17 @@ api.post('/me/goal', async (c) => {
   const minutes = Math.max(30, Math.min(6000, Math.round(Number(b.minutes) || 0)));
   db.prepare('UPDATE members SET monthly_goal_minutes = ? WHERE id = ?').run(minutes, m.id);
   return c.json({ monthlyGoalMinutes: minutes });
+});
+
+// a member changes their own PIN (needs the current one, so a borrowed unlocked phone can't lock them out)
+api.post('/me/pin', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const pin = String(b.pin || '').trim();
+  if (!/^\d{4,8}$/.test(pin)) return c.json({ error: 'PIN must be 4 to 8 digits' }, 400);
+  if (String(b.currentPin || '') !== m.pin) return c.json({ error: 'Current PIN is incorrect' }, 400);
+  db.prepare('UPDATE members SET pin = ? WHERE id = ?').run(pin, m.id);
+  return c.json({ ok: true });
 });
 
 // mark the first-run tutorial as seen (once per member)
@@ -995,10 +1018,73 @@ api.delete('/admin/households/:id', (c) => {
 });
 
 // ---- reading lists ----
+// everyone sees the curated/house lists and any member's public list; you also see your own private ones
 api.get('/lists', (c) => {
-  const lists = db.prepare('SELECT id, name, description FROM lists ORDER BY id').all();
+  const me = c.get('member');
+  const lists = db.prepare(`
+    SELECT l.id, l.name, l.description, l.owner_id AS ownerId, l.visibility, o.name AS ownerName
+    FROM lists l LEFT JOIN members o ON o.id = l.owner_id
+    WHERE l.visibility = 'public' OR l.owner_id = ?
+    ORDER BY (l.owner_id IS NULL) DESC, l.id`).all(me.id);
   const books = db.prepare('SELECT id, list_id AS listId, title, author FROM list_books ORDER BY id').all();
-  return c.json(lists.map((l) => ({ ...l, books: books.filter((b) => b.listId === l.id) })));
+  return c.json(lists.map((l) => ({
+    ...l, mine: l.ownerId === me.id, curated: l.ownerId == null,
+    books: books.filter((b) => b.listId === l.id),
+  })));
+});
+
+// ---- member-owned lists (create/edit/delete your own) ----
+const myList = (c) => {
+  const l = db.prepare('SELECT * FROM lists WHERE id = ?').get(Number(c.req.param('id')));
+  if (!l) return { err: c.json({ error: 'Not found' }, 404) };
+  if (l.owner_id !== c.get('member').id) return { err: c.json({ error: 'Not your list' }, 403) };
+  return { list: l };
+};
+
+api.post('/me/lists', async (c) => {
+  const me = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  if (!(b.name || '').trim()) return c.json({ error: 'Give your list a name' }, 400);
+  const visibility = b.visibility === 'private' ? 'private' : 'public';
+  const info = db.prepare('INSERT INTO lists (name, description, owner_id, visibility) VALUES (?, ?, ?, ?)')
+    .run(b.name.trim(), (b.description || '').trim(), me.id, visibility);
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.patch('/me/lists/:id', async (c) => {
+  const { list, err } = myList(c);
+  if (err) return err;
+  const b = await c.req.json().catch(() => ({}));
+  const name = b.name != null && String(b.name).trim() ? String(b.name).trim() : list.name;
+  const desc = b.description != null ? String(b.description) : list.description;
+  const visibility = b.visibility === 'private' || b.visibility === 'public' ? b.visibility : list.visibility;
+  db.prepare('UPDATE lists SET name = ?, description = ?, visibility = ? WHERE id = ?').run(name, desc, visibility, list.id);
+  return c.json({ ok: true });
+});
+
+api.delete('/me/lists/:id', (c) => {
+  const { list, err } = myList(c);
+  if (err) return err;
+  db.prepare('DELETE FROM list_books WHERE list_id = ?').run(list.id);
+  db.prepare('DELETE FROM lists WHERE id = ?').run(list.id);
+  return c.body(null, 204);
+});
+
+api.post('/me/lists/:id/books', async (c) => {
+  const { list, err } = myList(c);
+  if (err) return err;
+  const b = await c.req.json().catch(() => ({}));
+  if (!(b.title || '').trim()) return c.json({ error: 'Title required' }, 400);
+  const info = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)')
+    .run(list.id, b.title.trim(), (b.author || '').trim());
+  return c.json({ id: Number(info.lastInsertRowid) });
+});
+
+api.delete('/me/lists/:id/books/:bookId', (c) => {
+  const { list, err } = myList(c);
+  if (err) return err;
+  db.prepare('DELETE FROM list_books WHERE id = ? AND list_id = ?').run(Number(c.req.param('bookId')), list.id);
+  return c.body(null, 204);
 });
 
 api.post('/admin/lists', async (c) => {
@@ -1048,6 +1134,52 @@ api.patch('/admin/lists/books/:bookId', async (c) => {
 api.delete('/admin/lists/books/:bookId', (c) => {
   db.prepare('DELETE FROM list_books WHERE id = ?').run(Number(c.req.param('bookId')));
   return c.body(null, 204);
+});
+
+// ---- admin: download a full database backup (a clean standalone snapshot) ----
+api.get('/admin/backup', (c) => {
+  const tmp = `./data/backups/_dl-${randomUUID()}.db`;
+  try {
+    db.exec(`VACUUM INTO '${tmp}'`); // complete, consistent copy even with WAL writes in flight
+    const buf = readFileSync(tmp);
+    unlinkSync(tmp);
+    const date = new Date().toISOString().slice(0, 10);
+    c.header('Content-Type', 'application/octet-stream');
+    c.header('Content-Disposition', `attachment; filename="bookcoin-backup-${date}.db"`);
+    return c.body(buf);
+  } catch (e) {
+    try { if (existsSync(tmp)) unlinkSync(tmp); } catch { /* best effort cleanup */ }
+    return c.json({ error: 'Backup failed: ' + e.message }, 500);
+  }
+});
+
+// ---- admin: fresh start (season reset) ----
+// Wipes the activity ledgers (hours/sessions, coins, claims, purchases, past ceremonies)
+// so a new season can start from zero. Deliberately leaves members, profiles, shelves
+// (member_books: books, ratings, reviews, covers), reading lists, rewards, and quests intact.
+api.post('/admin/reset-activity', (c) => {
+  const count = (t) => db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get().n;
+  const cleared = {
+    sessions: count('sessions'),
+    coinTxns: count('coin_txns'),
+    questClaims: count('quest_claims'),
+    redemptions: count('redemptions'),
+    ceremonies: count('month_summaries'),
+  };
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM sessions');
+    db.exec('DELETE FROM coin_txns');
+    db.exec('DELETE FROM quest_claims');
+    db.exec('DELETE FROM redemptions');
+    db.exec('DELETE FROM month_summaries');
+    db.exec('DELETE FROM ceremony_seen');
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    return c.json({ error: 'Reset failed: ' + e.message }, 500);
+  }
+  return c.json({ ok: true, cleared });
 });
 
 // ---- admin: genres ----
