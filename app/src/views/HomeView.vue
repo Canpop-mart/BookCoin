@@ -3,14 +3,16 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, MEDIUMS, daysLeftInMonth, isFinalDayOfMonth, msUntilMonthEnd, fmtCountdown } from '../data';
+import { fmtDuration, MEDIUMS, fmtCountdown, msUntilTs } from '../data';
 
 const router = useRouter();
-const daysLeft = daysLeftInMonth();
 const now = ref(Date.now());
 let mTick = null;
-const finalDay = computed(() => isFinalDayOfMonth(now.value));
-const countdown = computed(() => fmtCountdown(msUntilMonthEnd(now.value)));
+const periodEnd = computed(() => lb.value?.periodEnd || null);
+const msLeft = computed(() => msUntilTs(periodEnd.value, now.value));
+const finalDay = computed(() => msLeft.value != null && msLeft.value > 0 && msLeft.value <= 86400000);
+const daysLeft = computed(() => (msLeft.value == null ? 0 : Math.ceil(msLeft.value / 86400000)));
+const countdown = computed(() => fmtCountdown(msLeft.value || 0));
 const profile = ref(null);
 const lb = ref(null);
 const activity = ref([]);
@@ -110,7 +112,7 @@ function ago(ts) {
 
     <div v-if="finalDay" class="card pop-in" style="background:#FBE0D2;border-color:#F2D2C5;display:flex;align-items:center;gap:11px;">
       <i class="ti ti-clock flame" style="color:var(--terra-d);font-size:22px;" aria-hidden="true"></i>
-      <div style="flex:1;"><div style="font-weight:600;color:var(--terra-d);">Last day of the month!</div><div class="sub" style="color:var(--terra-d);">{{ countdown }} left to climb the board before it resets.</div></div>
+      <div style="flex:1;"><div style="font-weight:600;color:var(--terra-d);">Final day to climb!</div><div class="sub" style="color:var(--terra-d);">{{ countdown }} left before the board resets.</div></div>
     </div>
 
     <button class="btn" @click="router.push('/reading')"><i class="ti ti-player-play" aria-hidden="true"></i> Start reading</button>

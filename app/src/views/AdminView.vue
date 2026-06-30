@@ -66,11 +66,11 @@ async function downloadBackup() {
 // --- run month-end now (pay bonuses + show the ceremony early) ---
 const finalizing = ref(false);
 async function wrapUpMonth() {
-  if (!confirm("Wrap up this month now? This pays out everyone's rank bonuses and bonus stars and shows the month-end ceremony. It can't be undone for this month.")) return;
+  if (!confirm("End this month now? This pays out rank bonuses and bonus stars, shows everyone the ceremony, and resets the leaderboard to a fresh start. It can't be undone.")) return;
   finalizing.value = true;
   try {
     await api.admin.finalizeMonth();
-    toast.value = 'Month wrapped up. The ceremony is live for everyone.';
+    toast.value = 'New month started. Bonuses paid, ceremony is live, and the board has reset.';
     await load();
   } catch (e) { toast.value = e.message; }
   finally { finalizing.value = false; }
@@ -472,9 +472,9 @@ async function addBook(l) {
       <!-- DATA / OPS: month-end, backup, fresh start -->
       <template v-if="tab === 'reset'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div style="font-weight:600;font-size:15px;"><i class="ti ti-confetti" style="color:var(--gold-d);" aria-hidden="true"></i> Wrap up the month</div>
-          <p class="sub" style="margin:0;">Pays out this month's rank bonuses and bonus stars and shows everyone the month-end ceremony now, instead of waiting for the 1st. Good for testing the ceremony, or closing the books a little early.</p>
-          <button class="btn soft" :disabled="finalizing" @click="wrapUpMonth"><i class="ti ti-confetti" aria-hidden="true"></i> {{ finalizing ? 'Wrapping up…' : 'Run month-end now' }}</button>
+          <div style="font-weight:600;font-size:15px;"><i class="ti ti-confetti" style="color:var(--gold-d);" aria-hidden="true"></i> Start a new month</div>
+          <p class="sub" style="margin:0;">Ends the current month right now: pays out rank bonuses and bonus stars, shows everyone the ceremony, and resets the leaderboard to zero. The next month runs a month from now. (It rolls over on its own too, you don't have to.)</p>
+          <button class="btn soft" :disabled="finalizing" @click="wrapUpMonth"><i class="ti ti-confetti" aria-hidden="true"></i> {{ finalizing ? 'Starting…' : 'End month &amp; start fresh' }}</button>
         </div>
 
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">

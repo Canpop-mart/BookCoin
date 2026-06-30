@@ -71,6 +71,11 @@ export function fmtCountdown(ms) {
   const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
+// ms until a server timestamp ('YYYY-MM-DD HH:MM:SS' UTC, e.g. the period end)
+export function msUntilTs(ts, now = Date.now()) {
+  if (!ts) return null;
+  return Math.max(0, Date.parse(ts.replace(' ', 'T') + 'Z') - now);
+}
 
 export function monthName(ym) {
   const [y, m] = (ym || '').split('-').map(Number);

@@ -3,18 +3,20 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, daysLeftInMonth, monthName, isFinalDayOfMonth, msUntilMonthEnd, fmtCountdown } from '../data';
+import { fmtDuration, monthName, fmtCountdown, msUntilTs } from '../data';
 
 const router = useRouter();
-const daysLeft = daysLeftInMonth();
 const period = ref('month');
 const data = ref(null);
 const lastResults = ref(null);
 
 const now = ref(Date.now());
 let mTick = null;
-const finalDay = computed(() => isFinalDayOfMonth(now.value));
-const countdown = computed(() => fmtCountdown(msUntilMonthEnd(now.value)));
+const periodEnd = computed(() => data.value?.periodEnd || null);
+const msLeft = computed(() => msUntilTs(periodEnd.value, now.value));
+const finalDay = computed(() => msLeft.value != null && msLeft.value > 0 && msLeft.value <= 86400000);
+const daysLeft = computed(() => (msLeft.value == null ? 0 : Math.ceil(msLeft.value / 86400000)));
+const countdown = computed(() => fmtCountdown(msLeft.value || 0));
 
 async function load() { data.value = await api.leaderboard(period.value); }
 onMounted(async () => {

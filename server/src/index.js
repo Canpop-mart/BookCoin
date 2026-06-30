@@ -50,6 +50,15 @@ const setAudience = (rewardId, ids) => {
 
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // YYYY-MM (UTC)
 const nowStr = () => new Date().toISOString().slice(0, 19).replace('T', ' '); // matches SQLite datetime('now')
+
+// --- competition period: a "month" the admin can end early. The monthly board counts
+//     sessions since period_start; it rolls automatically a month later, or on demand. ---
+const setMeta = (k, v) => db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(k, v);
+const getMeta = (k) => db.prepare('SELECT value FROM meta WHERE key = ?').get(k)?.value ?? null;
+const startOfMonthStr = () => { const d = new Date(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01 00:00:00`; };
+const addMonthStr = (ts) => { const d = new Date(ts.replace(' ', 'T') + 'Z'); d.setUTCMonth(d.getUTCMonth() + 1); return d.toISOString().slice(0, 19).replace('T', ' '); };
+function periodStart() { let s = getMeta('period_start'); if (!s) { s = startOfMonthStr(); setMeta('period_start', s); } return s; }
+const periodEndOf = (start) => addMonthStr(start);
 const safeParse = (s) => { try { return JSON.parse(s); } catch { return []; } };
 
 const MEMBER_COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
@@ -101,14 +110,18 @@ const STAR_DEFS = [
   { key: 'formats', label: 'Omnivore', icon: 'ti-books', desc: 'Most formats' },
 ];
 
-function finalizeMonth(month) {
+// finalize the competition for a [start, end) window. Keyed by its start timestamp,
+// so several can live in one calendar month after early manual rolls.
+function finalizePeriod(start, end) {
+  if (db.prepare('SELECT 1 FROM month_summaries WHERE month = ?').get(start)) return; // already wrapped up
+
   const standings = db.prepare(`
     SELECT m.id, m.name, m.initials, m.color,
            COALESCE(SUM(s.minutes),0) AS minutes, COALESCE(SUM(s.pages),0) AS pages, COUNT(s.id) AS sessions
-    FROM members m JOIN sessions s ON s.member_id = m.id AND strftime('%Y-%m', s.created_at) = ?
-    GROUP BY m.id ORDER BY minutes DESC, sessions DESC`).all(month);
+    FROM members m JOIN sessions s ON s.member_id = m.id AND s.created_at >= ? AND s.created_at < ?
+    GROUP BY m.id ORDER BY minutes DESC, sessions DESC`).all(start, end);
 
-  const rows = db.prepare("SELECT member_id, genres, medium, pages, substr(created_at,1,10) AS day FROM sessions WHERE strftime('%Y-%m', created_at) = ?").all(month);
+  const rows = db.prepare('SELECT member_id, genres, medium, pages, minutes, created_at FROM sessions WHERE created_at >= ? AND created_at < ?').all(start, end);
   const agg = {};
   for (const r of rows) {
     const a = (agg[r.member_id] ||= { genres: new Set(), formats: new Set(), pages: 0, sessions: 0, days: new Set() });
@@ -116,7 +129,7 @@ function finalizeMonth(month) {
     a.formats.add(r.medium);
     a.pages += r.pages || 0;
     a.sessions += 1;
-    a.days.add(r.day);
+    a.days.add(r.created_at.slice(0, 10));
   }
   const valueOf = (a, key) => key === 'genres' ? a.genres.size : key === 'formats' ? a.formats.size
     : key === 'days' ? a.days.size : key === 'pages' ? a.pages : a.sessions;
@@ -141,7 +154,7 @@ function finalizeMonth(month) {
   }
   const allGenres = new Set();
   for (const a of Object.values(agg)) for (const g of a.genres) allGenres.add(g);
-  const longest = db.prepare("SELECT s.minutes AS minutes, m.name AS name FROM sessions s JOIN members m ON m.id = s.member_id WHERE strftime('%Y-%m', s.created_at) = ? ORDER BY s.minutes DESC LIMIT 1").get(month);
+  const longest = db.prepare('SELECT s.minutes AS minutes, m.name AS name FROM sessions s JOIN members m ON m.id = s.member_id WHERE s.created_at >= ? AND s.created_at < ? ORDER BY s.minutes DESC LIMIT 1').get(start, end);
   const stats = {
     totalMinutes: out.reduce((a, s) => a + s.minutes, 0),
     totalPages: out.reduce((a, s) => a + s.pages, 0),
@@ -149,28 +162,34 @@ function finalizeMonth(month) {
     genres: allGenres.size,
     longest: longest ? { minutes: longest.minutes, name: longest.name } : null,
   };
-  const [yy, mm] = month.split('-').map(Number);
-  const daysInMonth = new Date(yy, mm, 0).getDate();
-  const dayRows = db.prepare("SELECT member_id AS id, CAST(substr(created_at, 9, 2) AS INTEGER) AS d, SUM(minutes) AS m FROM sessions WHERE strftime('%Y-%m', created_at) = ? GROUP BY member_id, d").all(month);
+  // cumulative chart for the top 5, bucketed by day offset from the start (works for any length)
+  const startMs = Date.parse(start.replace(' ', 'T') + 'Z');
+  const days = Math.max(1, Math.min(62, Math.ceil((Date.parse(end.replace(' ', 'T') + 'Z') - startMs) / 86400000)));
   const series = out.slice(0, 5).map((s) => {
-    const perDay = new Array(daysInMonth).fill(0);
-    for (const r of dayRows) if (r.id === s.id) perDay[r.d - 1] = r.m;
+    const perDay = new Array(days).fill(0);
+    for (const r of rows) {
+      if (r.member_id !== s.id) continue;
+      const di = Math.floor((Date.parse(r.created_at.replace(' ', 'T') + 'Z') - startMs) / 86400000);
+      if (di >= 0 && di < days) perDay[di] += r.minutes;
+    }
     let cum = 0;
     return { id: s.id, name: s.name, color: s.color, points: perDay.map((v) => (cum += v)) };
   });
 
   db.prepare('INSERT INTO month_summaries (month, data) VALUES (?, ?)')
-    .run(month, JSON.stringify({ month, standings: out, stars, starCoins: STAR_COINS, stats, series }));
-  console.log(`[bookcoin] finalized ${month}: ${out.length} readers, ${stars.filter((s) => s.winners.length).length} stars`);
+    .run(start, JSON.stringify({ month: start, standings: out, stars, starCoins: STAR_COINS, stats, series }));
+  console.log(`[bookcoin] finalized period ${start}: ${out.length} readers, ${stars.filter((s) => s.winners.length).length} stars`);
 }
 
-function runFinalization() {
-  const current = monthKey();
-  const months = db.prepare("SELECT DISTINCT strftime('%Y-%m', created_at) AS m FROM sessions WHERE strftime('%Y-%m', created_at) < ? ORDER BY m").all(current).map((r) => r.m);
-  for (const m of months) {
-    if (!db.prepare('SELECT 1 FROM month_summaries WHERE month = ?').get(m)) {
-      try { finalizeMonth(m); } catch (e) { console.error('[bookcoin] finalize failed for', m, e); }
-    }
+// auto-roll: whenever the current period has fully elapsed, finalize it and start the next
+function rollIfDue() {
+  let start = periodStart();
+  let guard = 0;
+  while (Date.parse(periodEndOf(start).replace(' ', 'T') + 'Z') <= Date.now() && guard++ < 36) {
+    const end = periodEndOf(start);
+    try { finalizePeriod(start, end); } catch (e) { console.error('[bookcoin] period finalize failed for', start, e); break; }
+    setMeta('period_start', end);
+    start = end;
   }
 }
 
@@ -186,12 +205,12 @@ const rowToBook = (b) => ({
   rating: b.rating, emoji: b.emoji || '', review: b.review || '', startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
 });
 
-const periodKeyFor = (quest) => (quest.period === 'month' ? monthKey() : 'once');
+const periodKeyFor = (quest) => (quest.period === 'month' ? periodStart() : 'once');
 
 function questProgress(quest, memberId) {
   const monthly = quest.period === 'month';
-  const filter = monthly ? "AND strftime('%Y-%m', created_at) = ?" : '';
-  const args = monthly ? [memberId, monthKey()] : [memberId];
+  const filter = monthly ? 'AND created_at >= ?' : '';
+  const args = monthly ? [memberId, periodStart()] : [memberId];
   switch (quest.type) {
     case 'minutes':
       return db.prepare(`SELECT COALESCE(SUM(minutes),0) AS v FROM sessions WHERE member_id = ? ${filter}`).get(...args).v;
@@ -370,7 +389,7 @@ api.post('/sessions', async (c) => {
 
   // --- milestones (so the app can celebrate the moment) ---
   const goalMinutes = m.monthly_goal_minutes || 0;
-  const afterMonth = db.prepare("SELECT COALESCE(SUM(minutes),0) AS n FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?").get(m.id, monthKey()).n;
+  const afterMonth = db.prepare('SELECT COALESCE(SUM(minutes),0) AS n FROM sessions WHERE member_id = ? AND created_at >= ?').get(m.id, periodStart()).n;
   const goalJustMet = goalMinutes > 0 && (afterMonth - minutes) < goalMinutes && afterMonth >= goalMinutes;
   const today = new Date().toISOString().slice(0, 10);
   const days = new Set(db.prepare('SELECT DISTINCT substr(created_at,1,10) AS d FROM sessions WHERE member_id = ?').all(m.id).map((r) => r.d));
@@ -482,7 +501,7 @@ api.delete('/me/books/:id', (c) => {
 
 api.get('/leaderboard', (c) => {
   const period = c.req.query('period') === 'all' ? 'all' : 'month';
-  const monthFilter = period === 'month' ? "AND strftime('%Y-%m', s.created_at) = ?" : '';
+  const monthFilter = period === 'month' ? 'AND s.created_at >= ?' : '';
   const sql = `
     SELECT m.id AS memberId, m.name, m.initials, m.color, m.avatar, m.household_id AS householdId, m.monthly_goal_minutes AS goal,
            COALESCE(SUM(s.minutes),0) AS minutes,
@@ -492,10 +511,10 @@ api.get('/leaderboard', (c) => {
     LEFT JOIN sessions s ON s.member_id = m.id ${monthFilter}
     GROUP BY m.id
     ORDER BY minutes DESC, coins DESC`;
-  const rows = period === 'month' ? db.prepare(sql).all(monthKey()) : db.prepare(sql).all();
+  const rows = period === 'month' ? db.prepare(sql).all(periodStart()) : db.prepare(sql).all();
   // month → each member's CURRENT balance; all-time → lifetime coins EARNED (gross, never drops when you spend)
   const coinsFor = period === 'all' ? lifetimeEarned : balance;
-  return c.json({ period, month: monthKey(), rows: rows.map((r, i) => ({ ...r, rank: i + 1, coins: coinsFor(r.memberId) })) });
+  return c.json({ period, month: monthKey(), periodStart: periodStart(), periodEnd: periodEndOf(periodStart()), rows: rows.map((r, i) => ({ ...r, rank: i + 1, coins: coinsFor(r.memberId) })) });
 });
 
 api.get('/profile/:id', (c) => {
@@ -504,7 +523,7 @@ api.get('/profile/:id', (c) => {
   if (!m) return c.json({ error: 'Not found' }, 404);
   const totals = db.prepare('SELECT COALESCE(SUM(minutes),0) AS minutes, COUNT(*) AS sessions, COALESCE(SUM(pages),0) AS pages FROM sessions WHERE member_id = ?').get(id);
   const byMedium = db.prepare('SELECT medium, SUM(minutes) AS minutes FROM sessions WHERE member_id = ? GROUP BY medium ORDER BY minutes DESC').all(id);
-  const monthMinutes = db.prepare("SELECT COALESCE(SUM(minutes),0) AS minutes FROM sessions WHERE member_id = ? AND strftime('%Y-%m', created_at) = ?").get(id, monthKey()).minutes;
+  const monthMinutes = db.prepare('SELECT COALESCE(SUM(minutes),0) AS minutes FROM sessions WHERE member_id = ? AND created_at >= ?').get(id, periodStart()).minutes;
   const recent = db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 20').all(id).map(rowToSession);
   const shelf = {
     reading: db.prepare("SELECT * FROM member_books WHERE member_id = ? AND status = 'reading' ORDER BY COALESCE(started_at, created_at) DESC, id DESC").all(id).map(rowToBook),
@@ -1167,12 +1186,12 @@ api.get('/admin/backup', (c) => {
 
 // ---- admin: run month-end now (pay rank bonuses + stars, fire the ceremony early) ----
 api.post('/admin/finalize-month', (c) => {
-  const month = monthKey();
-  if (db.prepare('SELECT 1 FROM month_summaries WHERE month = ?').get(month)) {
-    return c.json({ error: 'This month has already been wrapped up.' }, 400);
-  }
-  try { finalizeMonth(month); } catch (e) { return c.json({ error: 'Failed: ' + e.message }, 500); }
-  return c.json({ ok: true, month });
+  const start = periodStart();
+  const now = nowStr();
+  if (now <= start) return c.json({ error: 'No time has passed this period yet.' }, 400);
+  try { finalizePeriod(start, now); } catch (e) { return c.json({ error: 'Failed: ' + e.message }, 500); }
+  setMeta('period_start', now); // start a fresh period right now → the board resets
+  return c.json({ ok: true });
 });
 
 // ---- admin: fresh start (season reset) ----
@@ -1201,6 +1220,7 @@ api.post('/admin/reset-activity', (c) => {
     db.exec('ROLLBACK');
     return c.json({ error: 'Reset failed: ' + e.message }, 500);
   }
+  setMeta('period_start', nowStr()); // a fresh start begins a fresh competition period
   return c.json({ ok: true, cleared });
 });
 
@@ -1257,8 +1277,8 @@ if (existsSync(STATIC_ROOT)) {
   app.get('*', (c) => (indexHtml ? c.html(indexHtml) : c.text('Not found', 404)));
 }
 
-runFinalization();
-setInterval(runFinalization, 60 * 60 * 1000); // hourly: finalize any month that has rolled over
+rollIfDue();
+setInterval(rollIfDue, 60 * 60 * 1000); // hourly: roll the period over once it has elapsed
 startBackups(); // snapshot the DB on boot + daily
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
