@@ -389,7 +389,19 @@ api.post('/sessions', async (c) => {
 
 api.get('/me/sessions', (c) => {
   const m = c.get('member');
-  return c.json(db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC LIMIT 50').all(m.id).map(rowToSession));
+  return c.json(db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC').all(m.id).map(rowToSession));
+});
+
+// retroactively link a past session to a shelf book (matched by title, like the rest of the app)
+api.post('/me/sessions/:id/link', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const s = db.prepare('SELECT * FROM sessions WHERE id = ? AND member_id = ?').get(Number(c.req.param('id')), m.id);
+  if (!s) return c.json({ error: 'Not found' }, 404);
+  const book = db.prepare('SELECT * FROM member_books WHERE id = ? AND member_id = ?').get(Number(b.bookId), m.id);
+  if (!book) return c.json({ error: 'Book not found' }, 404);
+  db.prepare('UPDATE sessions SET title = ?, author = ? WHERE id = ?').run(book.title, book.author || '', s.id);
+  return c.json({ ok: true });
 });
 
 // a member can ask to remove one of their own sessions; an admin approves the actual deletion
@@ -1151,6 +1163,16 @@ api.get('/admin/backup', (c) => {
     try { if (existsSync(tmp)) unlinkSync(tmp); } catch { /* best effort cleanup */ }
     return c.json({ error: 'Backup failed: ' + e.message }, 500);
   }
+});
+
+// ---- admin: run month-end now (pay rank bonuses + stars, fire the ceremony early) ----
+api.post('/admin/finalize-month', (c) => {
+  const month = monthKey();
+  if (db.prepare('SELECT 1 FROM month_summaries WHERE month = ?').get(month)) {
+    return c.json({ error: 'This month has already been wrapped up.' }, 400);
+  }
+  try { finalizeMonth(month); } catch (e) { return c.json({ error: 'Failed: ' + e.message }, 500); }
+  return c.json({ ok: true, month });
 });
 
 // ---- admin: fresh start (season reset) ----

@@ -279,10 +279,13 @@ async function logout() {
     </div>
 
     <!-- reading journey -->
-    <div class="sub" style="margin-top:2px;"><i class="ti ti-history" aria-hidden="true"></i> Reading journey</div>
+    <div class="row" style="justify-content:space-between;margin-top:2px;">
+      <span class="sub"><i class="ti ti-history" aria-hidden="true"></i> Reading journey</span>
+      <button v-if="isMe && data.recent.length" class="chip" @click="router.push('/journey')">See all <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+    </div>
     <div v-if="!data.recent.length" class="card sub">No sessions logged yet.</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:8px;">
-        <div v-for="s in data.recent" :key="s.id" class="card" style="padding:0;overflow:hidden;">
+        <div v-for="s in data.recent.slice(0, 5)" :key="s.id" class="card" style="padding:0;overflow:hidden;">
         <button @click="toggleLog(s.id)"
           style="display:flex;align-items:center;gap:11px;width:100%;background:none;border:none;cursor:pointer;padding:12px 15px;text-align:left;font-family:inherit;">
           <div style="flex:1;min-width:0;">

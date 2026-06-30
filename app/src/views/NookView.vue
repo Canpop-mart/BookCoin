@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, daysLeftInMonth, monthName } from '../data';
+import { fmtDuration, daysLeftInMonth, monthName, isFinalDayOfMonth, msUntilMonthEnd, fmtCountdown } from '../data';
 
 const router = useRouter();
 const daysLeft = daysLeftInMonth();
@@ -11,11 +11,18 @@ const period = ref('month');
 const data = ref(null);
 const lastResults = ref(null);
 
+const now = ref(Date.now());
+let mTick = null;
+const finalDay = computed(() => isFinalDayOfMonth(now.value));
+const countdown = computed(() => fmtCountdown(msUntilMonthEnd(now.value)));
+
 async function load() { data.value = await api.leaderboard(period.value); }
 onMounted(async () => {
+  mTick = setInterval(() => { now.value = Date.now(); }, 30000);
   await load();
   try { const c = await api.ceremony(); if (c.summary) lastResults.value = c.summary.month; } catch {}
 });
+onUnmounted(() => clearInterval(mTick));
 function setPeriod(p) { if (p !== period.value) { period.value = p; load(); } }
 
 // one shared board for everyone — households don't split the leaderboard
@@ -32,7 +39,8 @@ const pct = (a, b) => Math.min(100, b ? (a / b) * 100 : 0);
   <div class="screen" v-if="data">
     <div class="row" style="justify-content:space-between;">
       <div class="h"><i class="ti ti-trophy" style="color:var(--gold);" aria-hidden="true"></i> Leaderboard</div>
-      <span class="sub" v-if="period === 'month'"><i class="ti ti-clock" aria-hidden="true"></i> {{ daysLeft }}d left</span>
+      <span v-if="period === 'month' && finalDay" class="chip" style="background:#FBE0D2;color:var(--terra-d);font-weight:700;"><i class="ti ti-clock flame" aria-hidden="true"></i> {{ countdown }} left!</span>
+      <span class="sub" v-else-if="period === 'month'"><i class="ti ti-clock" aria-hidden="true"></i> {{ daysLeft }}d left</span>
     </div>
 
     <div class="row" style="gap:7px;">

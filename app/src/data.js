@@ -56,6 +56,22 @@ export function daysLeftInMonth() {
   return Math.max(0, lastDay - d.getDate());
 }
 
+// final-day countdown: on the last day of the month, the days-left chip turns into a live timer
+export function isFinalDayOfMonth(now = Date.now()) {
+  const d = new Date(now);
+  return d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+}
+export function msUntilMonthEnd(now = Date.now()) {
+  const d = new Date(now);
+  return Math.max(0, new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime() - now);
+}
+export function fmtCountdown(ms) {
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 export function monthName(ym) {
   const [y, m] = (ym || '').split('-').map(Number);
   if (!y) return '';

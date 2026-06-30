@@ -24,6 +24,7 @@ const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6'
 const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '', householdId: null });
 const hForm = reactive({ id: null, name: '', color: '#E0785A' });
 const qForm = reactive({ id: null, title: '', description: '', type: 'minutes', target: 60, rewardCoins: 100, period: 'month', requiresApproval: false });
+const chForm = reactive({ id: null, title: '', description: '', rewardCoins: 100, requiresApproval: true });
 const rForm = reactive({ id: null, name: '', description: '', costCoins: 200, stock: '', ownerCut: 0 });
 const lForm = reactive({ id: null, name: '', description: '' });
 const bookInput = reactive({});
@@ -34,7 +35,15 @@ const QTYPES = [['minutes', 'Minutes read'], ['sessions', 'Sessions logged'], ['
 const pendingRewards = computed(() => rewards.value.filter((r) => r.status === 'pending'));
 const liveRewards = computed(() => rewards.value.filter((r) => r.status !== 'pending'));
 const pendingCount = computed(() => claims.value.length + pendingRewards.value.length + sessionDeletions.value.length);
-const TABS = [['approvals', 'Approvals'], ['members', 'Members'], ['households', 'Households'], ['quests', 'Quests'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres'], ['reset', 'Reset']];
+const TAB_GROUPS = [
+  { label: 'People', tabs: [['members', 'Members'], ['households', 'Households']] },
+  { label: 'Game', tabs: [['quests', 'Quests'], ['challenges', 'Challenges'], ['bounties', 'Bounties'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']] },
+  { label: 'Ops', tabs: [['approvals', 'Approvals'], ['reset', 'Data']] },
+];
+const QTYPES_AUTO = QTYPES.filter((t) => t[0] !== 'manual');
+const autoQuests = computed(() => quests.value.filter((q) => q.kind !== 'bounty' && q.type !== 'manual'));
+const challengeQuests = computed(() => quests.value.filter((q) => q.kind !== 'bounty' && q.type === 'manual'));
+const bountyQuests = computed(() => quests.value.filter((q) => q.kind === 'bounty'));
 
 // --- download a full database backup ---
 const backingUp = ref(false);
@@ -52,6 +61,19 @@ async function downloadBackup() {
     toast.value = 'Backup downloaded';
   } catch (e) { toast.value = e.message || 'Backup failed'; }
   finally { backingUp.value = false; }
+}
+
+// --- run month-end now (pay bonuses + show the ceremony early) ---
+const finalizing = ref(false);
+async function wrapUpMonth() {
+  if (!confirm("Wrap up this month now? This pays out everyone's rank bonuses and bonus stars and shows the month-end ceremony. It can't be undone for this month.")) return;
+  finalizing.value = true;
+  try {
+    await api.admin.finalizeMonth();
+    toast.value = 'Month wrapped up. The ceremony is live for everyone.';
+    await load();
+  } catch (e) { toast.value = e.message; }
+  finally { finalizing.value = false; }
 }
 
 // --- fresh start (season reset): wipe activity, keep profiles & shelves ---
@@ -148,6 +170,17 @@ async function saveQuest() {
   toast.value = editing ? 'Quest saved' : 'Quest created'; resetQuest();
 }
 
+// challenges are quests with type 'manual'; their own simpler form
+function resetChallenge() { Object.assign(chForm, { id: null, title: '', description: '', rewardCoins: 100, requiresApproval: true }); }
+function editChallenge(q) { Object.assign(chForm, { id: q.id, title: q.title, description: q.description || '', rewardCoins: q.reward_coins, requiresApproval: !!q.requires_approval }); }
+async function saveChallenge() {
+  if (!chForm.title.trim()) { toast.value = 'Title required'; return; }
+  const editing = chForm.id;
+  const body = { title: chForm.title, description: chForm.description, type: 'manual', target: 1, rewardCoins: chForm.rewardCoins, period: 'month', requiresApproval: chForm.requiresApproval };
+  await act(() => editing ? api.admin.updateQuest(editing, body) : api.admin.createQuest(body));
+  toast.value = editing ? 'Challenge saved' : 'Challenge created'; resetChallenge();
+}
+
 function resetReward() { Object.assign(rForm, { id: null, name: '', description: '', costCoins: 200, stock: '', ownerCut: 0 }); }
 function editReward(r) {
   Object.assign(rForm, { id: r.id, name: r.name, description: r.description || '', costCoins: r.costCoins, stock: r.stock ?? '', ownerCut: r.ownerCut });
@@ -192,10 +225,13 @@ async function addBook(l) {
     <div v-if="!allowed" class="card sub">Admins only.</div>
 
     <template v-else>
-      <div class="row" style="gap:6px;flex-wrap:wrap;">
-        <button v-for="t in TABS" :key="t[0]" class="chip" :class="{ on: tab === t[0] }" @click="tab = t[0]">
-          {{ t[1] }}<span v-if="t[0] === 'approvals' && pendingCount"> ({{ pendingCount }})</span>
-        </button>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div v-for="grp in TAB_GROUPS" :key="grp.label" class="row" style="gap:6px;flex-wrap:wrap;align-items:center;">
+          <span class="sub" style="width:48px;flex-shrink:0;font-size:10px;text-transform:uppercase;letter-spacing:.6px;">{{ grp.label }}</span>
+          <button v-for="t in grp.tabs" :key="t[0]" class="chip" :class="{ on: tab === t[0] }" @click="tab = t[0]">
+            {{ t[1] }}<span v-if="t[0] === 'approvals' && pendingCount"> ({{ pendingCount }})</span>
+          </button>
+        </div>
       </div>
       <p v-if="toast" class="sub" style="color:var(--sage-d);">{{ toast }}</p>
 
@@ -291,32 +327,66 @@ async function addBook(l) {
         </div>
       </template>
 
-      <!-- QUESTS -->
+      <!-- QUESTS (auto-tracked) -->
       <template v-if="tab === 'quests'">
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
-          <div class="sub">{{ qForm.id ? 'Edit quest or challenge' : 'Create quest or challenge' }}</div>
+          <div class="sub">{{ qForm.id ? 'Edit quest' : 'Create quest' }} <span style="opacity:.7;">· fills in as members read</span></div>
           <input v-model="qForm.title" placeholder="Title" />
           <input v-model="qForm.description" placeholder="Description" />
           <div class="row" style="gap:8px;">
-            <select v-model="qForm.type" style="flex:1;"><option v-for="t in QTYPES" :key="t[0]" :value="t[0]">{{ t[1] }}</option></select>
+            <select v-model="qForm.type" style="flex:1;"><option v-for="t in QTYPES_AUTO" :key="t[0]" :value="t[0]">{{ t[1] }}</option></select>
             <select v-model="qForm.period" style="width:120px;"><option value="month">Monthly</option><option value="once">One-time</option></select>
           </div>
           <div class="row" style="gap:8px;">
             <input v-model.number="qForm.target" type="number" min="1" placeholder="Target" />
             <input v-model.number="qForm.rewardCoins" type="number" min="0" placeholder="Reward coins" />
           </div>
-          <label v-if="qForm.type === 'manual'" class="sub row" style="gap:8px;"><input type="checkbox" v-model="qForm.requiresApproval" style="width:auto;" /> Requires approval</label>
-          <button class="btn" @click="saveQuest"><i :class="qForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ qForm.id ? 'Save quest' : 'Create' }}</button>
+          <button class="btn" @click="saveQuest"><i :class="qForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ qForm.id ? 'Save quest' : 'Create quest' }}</button>
           <button v-if="qForm.id" class="chip" @click="resetQuest">Cancel</button>
         </div>
-        <div v-for="q in quests" :key="q.id" class="card row" style="padding:10px 13px;gap:8px;" :style="q.active ? {} : { opacity: .5 }">
-          <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">{{ q.type === 'manual' ? 'challenge' : q.type }} · +{{ q.reward_coins }}</span></div>
+        <div v-for="q in autoQuests" :key="q.id" class="card row" style="padding:10px 13px;gap:8px;" :style="q.active ? {} : { opacity: .5 }">
+          <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">{{ q.type }} · {{ q.target }} · +{{ q.reward_coins }}</span></div>
           <template v-if="q.active">
             <button class="chip" aria-label="edit" @click="editQuest(q)"><i class="ti ti-edit" aria-hidden="true"></i></button>
             <button class="chip" aria-label="retire" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
           </template>
           <span v-else class="sub">retired</span>
         </div>
+        <div v-if="!autoQuests.length" class="card sub">No quests yet.</div>
+      </template>
+
+      <!-- CHALLENGES (manual, real-world) -->
+      <template v-if="tab === 'challenges'">
+        <div class="card" style="display:flex;flex-direction:column;gap:9px;">
+          <div class="sub">{{ chForm.id ? 'Edit challenge' : 'Create challenge' }} <span style="opacity:.7;">· a real-world task members mark done</span></div>
+          <input v-model="chForm.title" placeholder="Title (e.g. Read outside for an hour)" />
+          <input v-model="chForm.description" placeholder="Description" />
+          <input v-model.number="chForm.rewardCoins" type="number" min="0" placeholder="Reward coins" />
+          <label class="sub row" style="gap:8px;"><input type="checkbox" v-model="chForm.requiresApproval" style="width:auto;" /> Needs admin approval</label>
+          <button class="btn" @click="saveChallenge"><i :class="chForm.id ? 'ti ti-check' : 'ti ti-plus'" aria-hidden="true"></i> {{ chForm.id ? 'Save challenge' : 'Create challenge' }}</button>
+          <button v-if="chForm.id" class="chip" @click="resetChallenge">Cancel</button>
+        </div>
+        <div v-for="q in challengeQuests" :key="q.id" class="card row" style="padding:10px 13px;gap:8px;" :style="q.active ? {} : { opacity: .5 }">
+          <div style="flex:1;"><span style="font-weight:600;">{{ q.title }}</span> <span class="sub">+{{ q.reward_coins }}<template v-if="q.requires_approval"> · needs approval</template></span></div>
+          <template v-if="q.active">
+            <button class="chip" aria-label="edit" @click="editChallenge(q)"><i class="ti ti-edit" aria-hidden="true"></i></button>
+            <button class="chip" aria-label="retire" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          </template>
+          <span v-else class="sub">retired</span>
+        </div>
+        <div v-if="!challengeQuests.length" class="card sub">No challenges yet.</div>
+      </template>
+
+      <!-- BOUNTIES (member-posted) -->
+      <template v-if="tab === 'bounties'">
+        <p class="sub">Members post these from the Quests tab. You can see every bounty here and take any down.</p>
+        <div v-for="q in bountyQuests" :key="q.id" class="card row" style="padding:10px 13px;gap:8px;" :style="q.active ? {} : { opacity: .5 }">
+          <span class="av" style="width:30px;height:30px;background:#FBE0D2;color:var(--terra-d);flex-shrink:0;"><i class="ti ti-flag-2" aria-hidden="true"></i></span>
+          <div style="flex:1;min-width:0;"><div style="font-weight:600;">{{ q.title }}</div><div class="sub">+{{ q.reward_coins }}</div></div>
+          <button v-if="q.active" class="chip" aria-label="take down" @click="act(() => api.admin.deleteQuest(q.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          <span v-else class="sub">retired</span>
+        </div>
+        <div v-if="!bountyQuests.length" class="card sub">No bounties posted yet.</div>
       </template>
 
       <!-- REWARDS -->
@@ -399,8 +469,14 @@ async function addBook(l) {
         </div>
       </template>
 
-      <!-- RESET (fresh start for launch / a new season) -->
+      <!-- DATA / OPS: month-end, backup, fresh start -->
       <template v-if="tab === 'reset'">
+        <div class="card" style="display:flex;flex-direction:column;gap:9px;">
+          <div style="font-weight:600;font-size:15px;"><i class="ti ti-confetti" style="color:var(--gold-d);" aria-hidden="true"></i> Wrap up the month</div>
+          <p class="sub" style="margin:0;">Pays out this month's rank bonuses and bonus stars and shows everyone the month-end ceremony now, instead of waiting for the 1st. Good for testing the ceremony, or closing the books a little early.</p>
+          <button class="btn soft" :disabled="finalizing" @click="wrapUpMonth"><i class="ti ti-confetti" aria-hidden="true"></i> {{ finalizing ? 'Wrapping up…' : 'Run month-end now' }}</button>
+        </div>
+
         <div class="card" style="display:flex;flex-direction:column;gap:9px;">
           <div style="font-weight:600;font-size:15px;"><i class="ti ti-download" style="color:var(--sage-d);" aria-hidden="true"></i> Back up your data</div>
           <p class="sub" style="margin:0;">Download a complete copy of the database (members, sessions, shelves, lists, rewards). Worth grabbing before a fresh start, and now and then for safekeeping.</p>

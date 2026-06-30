@@ -1,12 +1,16 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, MEDIUMS, daysLeftInMonth } from '../data';
+import { fmtDuration, MEDIUMS, daysLeftInMonth, isFinalDayOfMonth, msUntilMonthEnd, fmtCountdown } from '../data';
 
 const router = useRouter();
 const daysLeft = daysLeftInMonth();
+const now = ref(Date.now());
+let mTick = null;
+const finalDay = computed(() => isFinalDayOfMonth(now.value));
+const countdown = computed(() => fmtCountdown(msUntilMonthEnd(now.value)));
 const profile = ref(null);
 const lb = ref(null);
 const activity = ref([]);
@@ -14,6 +18,7 @@ const comTab = ref('leaders');
 const ringPct = ref(0); // starts empty so the goal ring sweeps in on load
 
 onMounted(async () => {
+  mTick = setInterval(() => { now.value = Date.now(); }, 30000);
   const [p, l, a] = await Promise.all([
     api.profile(store.member.id), api.leaderboard('month'), api.activity(),
   ]);
@@ -21,6 +26,7 @@ onMounted(async () => {
   await nextTick();
   requestAnimationFrame(() => { ringPct.value = goalPct.value; });
 });
+onUnmounted(() => clearInterval(mTick));
 
 const rows = computed(() => lb.value?.rows || []);
 const myIndex = computed(() => rows.value.findIndex((r) => r.memberId === store.member.id));
@@ -102,6 +108,11 @@ function ago(ts) {
       </div>
     </div>
 
+    <div v-if="finalDay" class="card pop-in" style="background:#FBE0D2;border-color:#F2D2C5;display:flex;align-items:center;gap:11px;">
+      <i class="ti ti-clock flame" style="color:var(--terra-d);font-size:22px;" aria-hidden="true"></i>
+      <div style="flex:1;"><div style="font-weight:600;color:var(--terra-d);">Last day of the month!</div><div class="sub" style="color:var(--terra-d);">{{ countdown }} left to climb the board before it resets.</div></div>
+    </div>
+
     <button class="btn" @click="router.push('/reading')"><i class="ti ti-player-play" aria-hidden="true"></i> Start reading</button>
 
     <button class="card" style="cursor:pointer;width:100%;text-align:left;display:flex;flex-direction:column;gap:10px;font-family:inherit;" @click="router.push('/shelf')">
@@ -129,7 +140,7 @@ function ago(ts) {
           <span style="flex:1;font-weight:600;font-size:14px;">{{ r.name }}<span v-if="r.memberId === store.member.id" class="sub"> · you</span></span>
           <span class="sub">{{ fmtDuration(r.minutes) }}</span>
         </div>
-        <button class="chip" style="align-self:center;margin-top:2px;" @click="router.push('/nook')">Full leaderboard · {{ daysLeft }}d left <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
+        <button class="chip" style="align-self:center;margin-top:2px;" @click="router.push('/nook')">Full leaderboard · <template v-if="finalDay">{{ countdown }} left</template><template v-else>{{ daysLeft }}d left</template> <i class="ti ti-chevron-right" aria-hidden="true"></i></button>
       </template>
       <template v-else>
         <div v-if="!activity.length" class="sub" style="text-align:center;">No activity yet. Be the first to log a session.</div>

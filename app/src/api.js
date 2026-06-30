@@ -24,6 +24,7 @@ export const api = {
   me: () => req('/me'),
   logSession: (data) => req('/sessions', { method: 'POST', body: data }),
   mySessions: () => req('/me/sessions'),
+  linkSession: (id, bookId) => req(`/me/sessions/${id}/link`, { method: 'POST', body: { bookId } }),
   requestDeleteSession: (id) => req(`/me/sessions/${id}/request-delete`, { method: 'POST' }),
   cancelDeleteSession: (id) => req(`/me/sessions/${id}/cancel-delete`, { method: 'POST' }),
   setGoal: (minutes) => req('/me/goal', { method: 'POST', body: { minutes } }),
@@ -99,5 +100,6 @@ export const api = {
     createGenre: (b) => req('/admin/genres', { method: 'POST', body: b }),
     deleteGenre: (id) => req(`/admin/genres/${id}`, { method: 'DELETE' }),
     resetActivity: () => req('/admin/reset-activity', { method: 'POST' }),
+    finalizeMonth: () => req('/admin/finalize-month', { method: 'POST' }),
   },
 };
