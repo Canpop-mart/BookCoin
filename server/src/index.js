@@ -12,6 +12,11 @@ import { lookupEnabled, searchBooks, lookupIsbn, cleanIsbn, cleanBlurb } from '.
 
 const PORT = Number(process.env.PORT ?? 8787);
 const STATIC_ROOT = process.env.BOOKCOIN_STATIC ?? join(import.meta.dirname, '../../app/dist');
+// the running server's version, so the app can tell when it's behind a deploy
+const VERSION = (() => {
+  try { return JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8')).version || ''; }
+  catch { return ''; }
+})();
 
 // --- helpers ---
 const balance = (memberId) =>
@@ -347,6 +352,9 @@ function earnedTitles(memberId) {
 const api = new Hono();
 
 api.get('/health', (c) => c.json({ ok: true }));
+
+// version check for the update banner — unauthenticated so it works pre-login
+api.get('/version', (c) => c.json({ version: VERSION }));
 
 api.get('/members', (c) =>
   c.json(db.prepare('SELECT id, name, initials, color, avatar, household_id AS householdId FROM members ORDER BY id').all()));

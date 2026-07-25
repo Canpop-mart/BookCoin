@@ -64,6 +64,7 @@ export const api = {
   deleteList: (id) => req(`/me/lists/${id}`, { method: 'DELETE' }),
   addListBook: (id, b) => req(`/me/lists/${id}/books`, { method: 'POST', body: b }),
   removeListBook: (id, bookId) => req(`/me/lists/${id}/books/${bookId}`, { method: 'DELETE' }),
+  version: () => req('/version'),
   lookupStatus: () => req('/lookup/status'),
   lookupSearch: (q) => req('/lookup/search?q=' + encodeURIComponent(q)),
   lookupIsbn: (isbn) => req('/lookup/isbn/' + encodeURIComponent(isbn)),

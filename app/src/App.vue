@@ -9,6 +9,7 @@ import { fmtClock, claimableQuests } from './data';
 import { showReadingNotification, clearReadingNotification, onNotificationTap } from './timerNotify';
 import BottomNav from './components/BottomNav.vue';
 import Onboarding from './components/Onboarding.vue';
+import UpdateBanner from './components/UpdateBanner.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -102,6 +103,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app">
+    <UpdateBanner />
     <div v-if="showNav" class="ptr" :style="{ opacity: Math.min(1, pullOffset / 36), transform: `translate(-50%, ${pullOffset - 34}px)` }">
       <i class="ti ti-refresh" :class="{ spin: refreshing }" :style="refreshing ? {} : { transform: `rotate(${pullY * 3.2}deg)` }" aria-hidden="true"></i>
     </div>

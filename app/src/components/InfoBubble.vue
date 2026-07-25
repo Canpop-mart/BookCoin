@@ -1,19 +1,40 @@
 <script setup>
 // A small "i" dot. Tap it for a short explanation, so the UI can stay
 // self-explanatory and keep the detail tucked away until someone wants it.
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 
 defineProps({ text: { type: String, required: true } });
 const open = ref(false);
 const dot = ref(null);
-const pos = ref({ top: 0, left: 0 });
+const pop = ref(null);
+const style = ref({});
+const below = ref(false);
+const placed = ref(false);
 
-function toggle() {
-  if (!open.value && dot.value) {
-    const r = dot.value.getBoundingClientRect();
-    pos.value = { top: r.top, left: r.left + r.width / 2 };
-  }
-  open.value = !open.value;
+async function toggle() {
+  if (open.value) { open.value = false; return; }
+  open.value = true;
+  placed.value = false;
+  await nextTick();
+  place();
+}
+
+// Keep the bubble on-screen: clamp its left edge into the viewport and point
+// the arrow back at the dot. Flip below the dot when there isn't room above
+// (which is where a dot near the top of the screen would otherwise overflow).
+function place() {
+  const d = dot.value, el = pop.value;
+  if (!d || !el) return;
+  const r = d.getBoundingClientRect();
+  const pad = 10, gap = 9;
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const cx = r.left + r.width / 2;
+  const left = Math.max(pad, Math.min(cx - w / 2, window.innerWidth - w - pad));
+  below.value = r.top - gap - h < pad && r.bottom + gap + h < window.innerHeight;
+  const top = below.value ? r.bottom + gap : r.top - gap - h;
+  const arrow = Math.max(14, Math.min(cx - left, w - 14));
+  style.value = { top: `${top}px`, left: `${left}px`, '--arrow': `${arrow}px` };
+  placed.value = true;
 }
 </script>
 
@@ -24,7 +45,7 @@ function toggle() {
     </button>
     <teleport to="body">
       <div v-if="open" class="info-layer" @click="open = false">
-        <span class="info-pop" role="tooltip" :style="{ top: pos.top + 'px', left: pos.left + 'px' }" @click.stop>{{ text }}</span>
+        <span ref="pop" class="info-pop" :class="{ below, placed }" role="tooltip" :style="style" @click.stop>{{ text }}</span>
       </div>
     </teleport>
   </span>
@@ -40,16 +61,22 @@ function toggle() {
 .info-layer { position: fixed; inset: 0; z-index: 70; }
 .info-pop {
   position: fixed;
-  transform: translate(-50%, -100%) translateY(-9px);
-  width: max-content; max-width: min(240px, 78vw);
+  /* never wider than the screen; JS then clamps its left edge on-screen */
+  width: max-content; max-width: min(260px, calc(100vw - 20px));
   background: var(--ink); color: var(--cream);
   font-family: 'Nunito', sans-serif; font-size: 12.5px; line-height: 1.45; font-weight: 500;
   text-align: left;
   padding: 9px 12px; border-radius: 12px;
   box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
+  opacity: 0; /* revealed once placed, so it never flashes at the wrong spot */
 }
+.info-pop.placed { opacity: 1; }
 .info-pop::after {
-  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  content: ''; position: absolute; top: 100%; left: var(--arrow, 50%); transform: translateX(-50%);
   border: 6px solid transparent; border-top-color: var(--ink);
+}
+.info-pop.below::after {
+  top: auto; bottom: 100%;
+  border-top-color: transparent; border-bottom-color: var(--ink);
 }
 </style>

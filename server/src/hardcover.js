@@ -114,13 +114,28 @@ export function cleanBlurb(s) {
     .slice(0, 1500);
 }
 
+// Authors come back under `author_names` on the Hardcover search index, but be
+// defensive about the exact shape (it's a raw Typesense payload, not a typed
+// GraphQL field): accept an array, a single string, or a `contributions` list.
+function pickAuthor(doc) {
+  const names = doc.author_names;
+  if (Array.isArray(names)) { const n = names.find(Boolean); if (n) return String(n).trim(); }
+  else if (typeof names === 'string' && names.trim()) return names.trim();
+  for (const c of (Array.isArray(doc.contributions) ? doc.contributions : [])) {
+    if (!c) continue;
+    if (typeof c === 'string' && c.trim()) return c.trim();
+    const n = c.author?.name || c.author_name || c.name;
+    if (n && String(n).trim()) return String(n).trim();
+  }
+  return '';
+}
+
 function fromSearchHit(doc) {
   if (!doc || !doc.title) return null;
   const isbns = (Array.isArray(doc.isbns) ? doc.isbns : []).map(digitsOnly).filter(Boolean);
-  const authors = Array.isArray(doc.author_names) ? doc.author_names.filter(Boolean) : [];
   return {
     title: String(doc.title),
-    author: authors[0] || '',
+    author: pickAuthor(doc),
     cover: coverUrl(doc.image || doc.cached_image),
     blurb: cleanBlurb(doc.description),
     isbn: isbns.find((x) => x.length === 13) || isbns[0] || '',
