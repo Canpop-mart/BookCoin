@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
@@ -26,13 +26,33 @@ const genreList = ref(GENRES); // fallback; replaced by the admin-managed list b
 const allBooks = ref([]); // the reader's shelf, for the title picker
 const selectedBook = ref(null);
 
+// laps banked from the timer. More than one means this sitting covered several books,
+// and each lap is logged as its own session sharing one note.
+// the timer seeds each lap's minutes, but they stay editable: a split is a guess, not gospel
+const laps = ref((store.draft?.segments || []).map((s) => ({ minutes: Math.max(1, Math.round(s.seconds / 60)), title: s.title || '' })));
+const multi = computed(() => laps.value.length > 1);
+const lapMins = (l) => Math.max(1, Math.round(Number(l.minutes) || 1));
+const lapTotal = computed(() => laps.value.reduce((a, l) => a + lapMins(l), 0));
+// drop an accidental split; falling back to one lap becomes a normal single session
+function removeLap(i) {
+  laps.value.splice(i, 1);
+  if (laps.value.length === 1) {
+    const only = laps.value[0];
+    const m = lapMins(only);
+    hours.value = Math.floor(m / 60);
+    mins.value = m % 60;
+    secs.value = 0;
+    title.value = only.title || '';
+  }
+}
+
 onMounted(async () => {
   try { const g = await api.genres(); if (Array.isArray(g) && g.length) genreList.value = g; } catch { /* keep the fallback list */ }
   try { allBooks.value = await api.books(); } catch { /* picker just won't suggest */ }
 });
 
 const rawSeconds = computed(() => (hours.value || 0) * 3600 + (mins.value || 0) * 60 + (secs.value || 0));
-const totalMinutes = computed(() => Math.max(1, Math.round(rawSeconds.value / 60)));
+const totalMinutes = computed(() => (multi.value ? lapTotal.value : Math.max(1, Math.round(rawSeconds.value / 60))));
 const noteMissing = computed(() => !summary.value.trim());
 
 // little milestones to celebrate on the result screen
@@ -53,7 +73,35 @@ const titleMatches = computed(() => {
 const linked = computed(() => selectedBook.value && (selectedBook.value.title || '').trim().toLowerCase() === title.value.trim().toLowerCase());
 const STATUS_LABEL = { reading: 'Reading now', want: 'Up next', finished: 'Finished' };
 
-function pickBook(b) { title.value = b.title; author.value = b.author || ''; selectedBook.value = b; }
+function pickBook(b) { title.value = b.title; author.value = b.author || ''; selectedBook.value = b; picked.cover = ''; picked.isbn = ''; picked.blurb = ''; }
+
+// chosen from the book search or a scanned barcode: fill the fields now, and
+// keep the cover/blurb so they come along if this turns into a shelf book below
+const picked = reactive({ cover: '', isbn: '', blurb: '' });
+function fillFromLookup(b) {
+  title.value = b.title;
+  author.value = b.author || '';
+  picked.cover = b.cover || '';
+  picked.isbn = b.isbn || '';
+  picked.blurb = b.blurb || '';
+  selectedBook.value = null;
+}
+
+// add a book to the shelf without leaving the log screen
+const exactMatch = computed(() => allBooks.value.find((b) => (b.title || '').trim().toLowerCase() === title.value.trim().toLowerCase()));
+const canCreate = computed(() => title.value.trim().length > 1 && !exactMatch.value);
+const creating = ref(false);
+async function createBook() {
+  const t = title.value.trim();
+  if (!t || creating.value) return;
+  creating.value = true;
+  try {
+    const b = await api.addBook({ title: t, author: author.value.trim(), status: 'reading', cover: picked.cover, isbn: picked.isbn, blurb: picked.blurb });
+    allBooks.value = await api.books();
+    selectedBook.value = b;
+  } catch { /* the session still logs fine without the shelf link */ }
+  finally { creating.value = false; }
+}
 
 function toggleGenre(g) {
   const i = genres.value.indexOf(g);
@@ -72,14 +120,37 @@ async function resolveFinishedBook() {
   const books = allBooks.value.length ? allBooks.value : await api.books();
   const match = books.find((b) => (b.title || '').trim().toLowerCase() === t.toLowerCase());
   if (match) { if (match.status !== 'finished') await api.updateBook(match.id, { status: 'finished' }); return match.id; }
-  const created = await api.addBook({ title: t, author: author.value.trim(), status: 'finished' });
+  const created = await api.addBook({ title: t, author: author.value.trim(), status: 'finished', cover: picked.cover, isbn: picked.isbn, blurb: picked.blurb });
   return created.id;
 }
 
 async function save() {
   error.value = '';
   if (!summary.value.trim()) { error.value = "Add a note about what you read. It's the one thing we need."; return; }
-  if (rawSeconds.value < 1) { error.value = 'How long did you read?'; return; }
+  if (!multi.value && rawSeconds.value < 1) { error.value = 'How long did you read?'; return; }
+
+  // several laps: one session per book, all sharing this note
+  if (multi.value) {
+    saving.value = true;
+    try {
+      let coins = 0, base = 0, last = null;
+      for (const [i, lap] of laps.value.entries()) {
+        last = await api.logSession({
+          title: lap.title, author: '', medium: medium.value, genres: genres.value,
+          minutes: lapMins(lap), pages: null,
+          summary: summary.value, quote: i === 0 ? (quote.value || null) : null,
+        });
+        coins += last.coins; base += last.base;
+      }
+      store.draft = null;
+      result.value = { ...last, coins, base, minutes: totalMinutes.value, isNewGenre: false, sessionCount: laps.value.length };
+      hapticWin();
+    } catch (e) {
+      error.value = 'Could not save. ' + e.message;
+    } finally { saving.value = false; }
+    return;
+  }
+
   saving.value = true;
   try {
     const res = await api.logSession({
@@ -111,6 +182,23 @@ async function save() {
       <button class="chip" @click="router.replace('/')"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
 
+    <div v-if="multi" class="card" style="background:var(--sage-bg);border-color:transparent;">
+      <div class="row" style="gap:9px;">
+        <i class="ti ti-arrows-split-2" style="font-size:20px;color:var(--sage-d);" aria-hidden="true"></i>
+        <span class="sub" style="color:var(--sage-d);font-weight:600;">{{ laps.length }} books this sitting<InfoBubble text="Each lap is logged as its own session. The note below covers the whole sitting." /></span>
+        <span class="sub" style="color:var(--sage-d);margin-left:auto;">{{ fmtDuration(totalMinutes) }}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+        <div v-for="(l, i) in laps" :key="i" class="row" style="gap:8px;">
+          <input v-model="l.title" :placeholder="`Book ${i + 1} title`" style="flex:1;min-width:0;" />
+          <input v-model.number="l.minutes" type="number" min="1" max="1440" :aria-label="`Book ${i + 1} minutes`" style="width:62px;text-align:center;flex-shrink:0;" />
+          <span class="sub" style="color:var(--sage-d);flex-shrink:0;">m</span>
+          <button class="chip" aria-label="remove this split" style="padding:4px 8px;flex-shrink:0;" @click="removeLap(i)"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <template v-else>
     <div class="card" style="background:var(--sage-bg);border-color:transparent;">
       <div class="row" style="gap:9px;">
         <i class="ti ti-clock" style="font-size:20px;color:var(--sage-d);" aria-hidden="true"></i>
@@ -133,17 +221,32 @@ async function save() {
       </div>
     </div>
 
+    <BookFinder v-if="!multi" @pick="fillFromLookup" />
+
     <div style="position:relative;">
-      <input v-model="title" placeholder="Title (optional)" autocomplete="off" />
+      <div class="row" style="gap:10px;">
+        <img v-if="picked.cover" :src="picked.cover" alt="" style="width:32px;height:45px;object-fit:cover;border-radius:3px 5px 5px 3px;box-shadow:0 1px 3px rgba(0,0,0,.22);flex-shrink:0;" @error="picked.cover = ''" />
+        <input v-model="title" placeholder="Title (optional)" autocomplete="off" style="flex:1;min-width:0;" />
+      </div>
       <div v-if="linked" class="sub" style="margin-top:5px;color:var(--sage-d);"><i class="ti ti-link" aria-hidden="true"></i> Linked to {{ STATUS_LABEL[selectedBook.status] || 'your shelf' }} on your shelf</div>
-      <div v-if="titleMatches.length" class="picker">
+      <div v-if="titleMatches.length || (canCreate && !linked)" class="picker">
         <button v-for="b in titleMatches" :key="b.id" type="button" class="picker-row" @click="pickBook(b)">
-          <span class="picker-cover" :style="{ background: 'var(--chip)' }"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-book" aria-hidden="true"></i></span>
+          <span class="picker-cover" :style="{ background: 'var(--chip)' }">
+            <img v-if="b.cover" :src="b.cover" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;" @error="b.cover = ''" />
+            <span v-else-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-book" aria-hidden="true"></i>
+          </span>
           <span style="flex:1;min-width:0;text-align:left;">
             <span style="font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</span>
             <span class="sub" v-if="b.author">{{ b.author }}</span>
           </span>
           <span class="sub" style="white-space:nowrap;">{{ STATUS_LABEL[b.status] }}</span>
+        </button>
+        <button v-if="canCreate && !linked" type="button" class="picker-row" :disabled="creating" @click="createBook">
+          <span class="picker-cover" style="background:var(--sage-bg);color:var(--sage-d);"><i class="ti ti-plus" aria-hidden="true"></i></span>
+          <span style="flex:1;min-width:0;text-align:left;">
+            <span style="font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ creating ? 'Adding…' : `Add “${title.trim()}” to your shelf` }}</span>
+            <span class="sub">Starts it as Reading now</span>
+          </span>
         </button>
       </div>
     </div>
@@ -159,6 +262,7 @@ async function save() {
       </button>
       <InfoBubble text="Adds this book to your shelf as finished. Give it a title above so it can be shelved." />
     </div>
+    </template>
 
     <div>
       <div class="row" style="justify-content:space-between;margin-bottom:7px;">
@@ -186,7 +290,7 @@ async function save() {
     <div>
       <div class="sub" style="margin-bottom:7px;">Optional extras</div>
       <div class="row" style="gap:8px;align-items:stretch;">
-        <input v-model="pages" type="number" min="0" placeholder="Pages" />
+        <input v-if="!multi" v-model="pages" type="number" min="0" placeholder="Pages" />
         <input v-model="quote" placeholder="A quote you loved" />
       </div>
     </div>
@@ -198,7 +302,7 @@ async function save() {
   <div v-else class="screen full" style="text-align:center;justify-content:center;align-items:center;gap:15px;">
     <CoinBurst />
     <Mascot :size="104" eyes="happy" mood="cheer" :variant="store.member?.mascot || 'wizard'" />
-    <div class="h" style="font-size:22px;">Session logged!</div>
+    <div class="h" style="font-size:22px;">{{ result.sessionCount > 1 ? `${result.sessionCount} sessions logged!` : 'Session logged!' }}</div>
     <div v-if="milestones.length" class="row pop-in" style="gap:7px;flex-wrap:wrap;justify-content:center;">
       <span v-for="m in milestones" :key="m.text" class="chip" style="background:var(--gold-bg);color:var(--gold-d);font-weight:700;">
         <i :class="['ti', m.icon, m.icon === 'ti-flame' ? 'flame' : '']" aria-hidden="true"></i> {{ m.text }}
@@ -237,7 +341,7 @@ async function save() {
 .picker-row + .picker-row { border-top: 1px solid var(--line); }
 .picker-row:hover { background: var(--paper); }
 .picker-cover {
-  width: 24px; height: 32px; border-radius: 3px 5px 5px 3px; flex-shrink: 0;
+  width: 24px; height: 32px; border-radius: 3px 5px 5px 3px; flex-shrink: 0; overflow: hidden;
   display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--ink2);
 }
 </style>

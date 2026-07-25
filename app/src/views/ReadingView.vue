@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { store } from '../store';
-import { fmtClock } from '../data';
+import { fmtClock, fmtLap } from '../data';
 
 const router = useRouter();
 const now = ref(Date.now());
@@ -18,13 +18,18 @@ const running = computed(() => !!store.timer?.running);
 const seconds = computed(() => { now.value; return Math.floor(store.elapsedMs() / 1000); });
 const title = computed({ get: () => store.timer?.title || '', set: (v) => store.setTimerTitle(v) });
 
+const segments = computed(() => store.timer?.segments || []);
+
 function toggle() { running.value ? store.pauseTimer() : store.resumeTimer(); }
-// finishBook = the whole book is done; the log screen pre-checks "finished" and shelves it on save
-function finish(finishBook = false) {
+function split() { store.splitTimer(); }
+// marking a book finished lives on the log screen, not here
+function finish() {
   const seconds = Math.max(1, Math.round(store.elapsedMs() / 1000));
   const t = store.timer?.title || '';
+  // every banked lap plus whatever is on the clock right now
+  const laps = [...(store.timer?.segments || []), { seconds, title: t }];
   store.clearTimer();
-  store.draft = { seconds, title: t, finishBook };
+  store.draft = { seconds, title: t, segments: laps };
   router.replace('/log');
 }
 function cancel() { store.clearTimer(); router.replace('/'); }
@@ -48,6 +53,11 @@ function cancel() { store.clearTimer(); router.replace('/'); }
         {{ running ? "You're earning coins as you read" : "Paused. Resume when you're ready." }}
       </div>
       <div class="sub" style="font-size:12px;opacity:.8;max-width:240px;">Leave the app if you like. Your time keeps counting.</div>
+      <div v-if="segments.length" class="row" style="gap:6px;flex-wrap:wrap;justify-content:center;max-width:300px;">
+        <span v-for="(s, i) in segments" :key="i" class="chip" style="font-size:12px;background:var(--sage-bg);color:var(--sage-d);">
+          <i class="ti ti-check" aria-hidden="true"></i> {{ s.title || `Book ${i + 1}` }} · {{ fmtLap(s.seconds) }}
+        </span>
+      </div>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:10px;">
@@ -56,11 +66,10 @@ function cancel() { store.clearTimer(); router.replace('/'); }
           <i :class="running ? 'ti ti-player-pause' : 'ti ti-player-play'" aria-hidden="true"></i>
           {{ running ? 'Pause' : 'Resume' }}
         </button>
-        <button class="btn" @click="finish(false)"><i class="ti ti-check" aria-hidden="true"></i> Done reading</button>
+        <button class="btn soft" @click="split"><i class="ti ti-arrows-split-2" aria-hidden="true"></i> Split</button>
+        <InfoBubble text="Banks the time so far and keeps the clock running. Use it when you switch books mid-session, or when one session spreads across several sittings." />
       </div>
-      <button class="btn" style="background:var(--gold);color:var(--gold-d);" @click="finish(true)">
-        <i class="ti ti-confetti" aria-hidden="true"></i> I finished the book
-      </button>
+      <button class="btn" @click="finish()"><i class="ti ti-check" aria-hidden="true"></i> Done reading</button>
     </div>
   </div>
 </template>

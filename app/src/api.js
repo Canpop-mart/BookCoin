@@ -29,6 +29,7 @@ export const api = {
   cancelDeleteSession: (id) => req(`/me/sessions/${id}/cancel-delete`, { method: 'POST' }),
   setGoal: (minutes) => req('/me/goal', { method: 'POST', body: { minutes } }),
   setPin: (b) => req('/me/pin', { method: 'POST', body: b }),
+  setTitle: (title) => req('/me/title', { method: 'POST', body: { title } }),
   setAppearance: (b) => req('/me/appearance', { method: 'POST', body: b }),
   markOnboarded: () => req('/me/onboarded', { method: 'POST' }),
   activity: () => req('/activity'),
@@ -63,6 +64,9 @@ export const api = {
   deleteList: (id) => req(`/me/lists/${id}`, { method: 'DELETE' }),
   addListBook: (id, b) => req(`/me/lists/${id}/books`, { method: 'POST', body: b }),
   removeListBook: (id, bookId) => req(`/me/lists/${id}/books/${bookId}`, { method: 'DELETE' }),
+  lookupStatus: () => req('/lookup/status'),
+  lookupSearch: (q) => req('/lookup/search?q=' + encodeURIComponent(q)),
+  lookupIsbn: (isbn) => req('/lookup/isbn/' + encodeURIComponent(isbn)),
   genres: () => req('/genres'),
   households: () => req('/households'),
 

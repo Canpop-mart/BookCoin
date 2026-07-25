@@ -53,6 +53,14 @@ jobs:
       - name: Allow cleartext HTTP
         run: sed -i 's/<application/<application android:usesCleartextTraffic="true"/' app/android/app/src/main/AndroidManifest.xml
 
+      # Camera, for scanning the barcode on the back of a book
+      - name: Allow camera
+        run: |
+          F=app/android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.CAMERA' "$F" || sed -i \
+            's|</manifest>|    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>|' "$F"
+          grep -A1 'uses-permission' "$F"
+
       # Sign the release on v* tags only when a keystore secret is configured;
       # otherwise fall back to a debug build so releases never break.
       - name: Decide signing

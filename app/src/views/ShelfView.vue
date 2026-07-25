@@ -9,7 +9,7 @@ const books = ref([]);
 const loading = ref(true);
 const busy = ref(null);
 const showAdd = ref(false);
-const form = reactive({ title: '', author: '', status: 'reading' });
+const form = reactive({ title: '', author: '', status: 'reading', cover: '', isbn: '', blurb: '' });
 const q = ref('');
 
 async function load() { try { books.value = await api.books(); } finally { loading.value = false; } }
@@ -40,12 +40,16 @@ function spine(b) {
 }
 function open(b) { router.push('/book/' + b.id); }
 
+function fillFrom(b) {
+  form.title = b.title; form.author = b.author; form.cover = b.cover; form.isbn = b.isbn; form.blurb = b.blurb || '';
+}
+
 async function add() {
   if (!form.title.trim()) return;
   busy.value = 'add';
   try {
-    await api.addBook({ title: form.title.trim(), author: form.author.trim(), status: form.status });
-    form.title = ''; form.author = ''; showAdd.value = false;
+    await api.addBook({ title: form.title.trim(), author: form.author.trim(), status: form.status, cover: form.cover, isbn: form.isbn, blurb: form.blurb });
+    form.title = ''; form.author = ''; form.cover = ''; form.isbn = ''; form.blurb = ''; showAdd.value = false;
     await load();
   } finally { busy.value = null; }
 }
@@ -67,11 +71,12 @@ async function remove(b) {
 <template>
   <div class="screen">
     <div class="row" style="justify-content:space-between;">
-      <div class="h"><i class="ti ti-books" style="color:var(--terra);" aria-hidden="true"></i> My shelf</div>
-      <div class="row" style="gap:7px;">
-        <button class="chip" @click="router.push('/lists')"><i class="ti ti-list-search" aria-hidden="true"></i> Reading lists</button>
-        <button class="chip" aria-label="Close" @click="router.push('/')"><i class="ti ti-x" aria-hidden="true"></i></button>
-      </div>
+      <div class="h"><i class="ti ti-books" style="color:var(--terra);" aria-hidden="true"></i> Library</div>
+      <button class="chip" aria-label="Close" @click="router.push('/')"><i class="ti ti-x" aria-hidden="true"></i></button>
+    </div>
+    <div class="row" style="gap:7px;">
+      <button class="chip on" style="flex:1;justify-content:center;"><i class="ti ti-books" aria-hidden="true"></i> My shelf</button>
+      <button class="chip" style="flex:1;justify-content:center;" @click="router.push('/lists')"><i class="ti ti-list-search" aria-hidden="true"></i> Reading lists</button>
     </div>
 
     <div class="card row" style="justify-content:space-between;background:var(--gold-bg);border-color:#EBD49B;">
@@ -83,8 +88,14 @@ async function remove(b) {
     </div>
 
     <div v-if="showAdd" class="card pop-in" style="display:flex;flex-direction:column;gap:9px;">
-      <input v-model="form.title" placeholder="Book title" />
-      <input v-model="form.author" placeholder="Author (optional)" />
+      <BookFinder @pick="fillFrom" />
+      <div class="row" style="gap:10px;">
+        <img v-if="form.cover" :src="form.cover" alt="" style="width:38px;height:54px;object-fit:cover;border-radius:3px 6px 6px 3px;box-shadow:0 1px 4px rgba(0,0,0,.25);flex-shrink:0;" @error="form.cover = ''" />
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:9px;">
+          <input v-model="form.title" placeholder="Book title" />
+          <input v-model="form.author" placeholder="Author (optional)" />
+        </div>
+      </div>
       <div class="row" style="gap:7px;">
         <button class="chip" :class="{ on: form.status === 'reading' }" style="flex:1;justify-content:center;" @click="form.status = 'reading'"><i class="ti ti-book" aria-hidden="true"></i> Reading now</button>
         <button class="chip" :class="{ on: form.status === 'want' }" style="flex:1;justify-content:center;" @click="form.status = 'want'"><i class="ti ti-bookmark" aria-hidden="true"></i> Want to read</button>
@@ -107,7 +118,11 @@ async function remove(b) {
       <div class="sub" style="margin-top:2px;"><i class="ti ti-book" aria-hidden="true"></i> Reading now</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:9px;">
         <div v-for="b in readingShown" :key="b.id" class="card row" style="gap:12px;">
-          <button class="av" style="width:38px;height:50px;border:none;border-radius:4px 7px 7px 4px;flex-shrink:0;cursor:pointer;font-size:22px;" :style="{ background: spine(b).bg }" title="Open" @click="open(b)"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-book" style="font-size:18px;color:#fff;opacity:.9;" aria-hidden="true"></i></button>
+          <button class="av" style="width:38px;height:50px;border:none;border-radius:4px 7px 7px 4px;flex-shrink:0;cursor:pointer;font-size:22px;overflow:hidden;padding:0;" :style="{ background: spine(b).bg }" title="Open" @click="open(b)">
+            <img v-if="b.cover" :src="b.cover" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;" @error="b.cover = ''" />
+            <span v-else-if="b.emoji">{{ b.emoji }}</span>
+            <i v-else class="ti ti-book" style="font-size:18px;color:#fff;opacity:.9;" aria-hidden="true"></i>
+          </button>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div>
             <div class="sub" v-if="b.author">{{ b.author }}</div>
@@ -139,7 +154,11 @@ async function remove(b) {
       <div class="sub" style="margin-top:4px;"><i class="ti ti-bookmark" aria-hidden="true"></i> Up next</div>
       <div class="stagger" style="display:flex;flex-direction:column;gap:8px;">
         <div v-for="b in wantShown" :key="b.id" class="card row" style="gap:11px;padding:10px 14px;">
-          <button class="av" style="width:30px;height:40px;border:none;border-radius:3px 6px 6px 3px;flex-shrink:0;cursor:pointer;font-size:17px;background:#EAE0D2;color:#8A7660;" title="Open" @click="open(b)"><span v-if="b.emoji">{{ b.emoji }}</span><i v-else class="ti ti-bookmark" style="font-size:14px;" aria-hidden="true"></i></button>
+          <button class="av" style="width:30px;height:40px;border:none;border-radius:3px 6px 6px 3px;flex-shrink:0;cursor:pointer;font-size:17px;background:#EAE0D2;color:#8A7660;overflow:hidden;padding:0;" title="Open" @click="open(b)">
+            <img v-if="b.cover" :src="b.cover" alt="" loading="lazy" style="width:100%;height:100%;object-fit:cover;" @error="b.cover = ''" />
+            <span v-else-if="b.emoji">{{ b.emoji }}</span>
+            <i v-else class="ti ti-bookmark" style="font-size:14px;" aria-hidden="true"></i>
+          </button>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</div>
             <div class="sub" v-if="b.author">{{ b.author }}</div>

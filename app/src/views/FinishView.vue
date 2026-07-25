@@ -6,7 +6,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
 import { hapticWin } from '../haptics';
-import { fmtDuration, bookSpine, COVER_EMOJIS } from '../data';
+import { fmtDuration, bookSpine, COVER_EMOJIS, READER_TITLES } from '../data';
 
 const route = useRoute();
 const router = useRouter();
@@ -41,15 +41,14 @@ onMounted(async () => {
   hapticWin();
 });
 
-// reader-title thresholds, matched against the new total
-const TITLES = [[25, 'Book dragon'], [12, 'Bibliophile'], [5, 'Bookworm'], [1, 'Page-turner']];
 const milestones = computed(() => {
   const out = [];
   const n = finishedCount.value;
   if (n === 1) out.push({ icon: 'ti-confetti', text: 'Your first finished book!' });
   else if (finishedThisYear.value === 1) out.push({ icon: 'ti-confetti', text: `First book of ${new Date().getFullYear()}!` });
-  const lvl = TITLES.find(([t]) => t === n);
-  if (lvl && n !== 1) out.push({ icon: 'ti-arrow-up-circle', text: `You're a ${lvl[1]} now!` });
+  // landing exactly on a reader-title threshold means you just levelled up
+  const lvl = READER_TITLES.find((t) => t.books === n);
+  if (lvl && n !== 1) out.push({ icon: 'ti-arrow-up-circle', text: `You're a ${lvl.title} now!` });
   if (coins.value?.goalJustMet) out.push({ icon: 'ti-target', text: 'Monthly goal reached!' });
   if (coins.value?.streakHit) out.push({ icon: 'ti-flame', text: `${coins.value.streakHit}-day streak!` });
   return out;
@@ -92,7 +91,8 @@ async function done() {
 
     <!-- the book itself, as a little trophy -->
     <button class="cover" :style="{ background: spineBg }" title="Choose a cover" @click="showCover = !showCover">
-      <span v-if="book.emoji" style="font-size:46px;">{{ book.emoji }}</span>
+      <img v-if="book.cover" :src="book.cover" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:6px 11px 11px 6px;" @error="book.cover = ''" />
+      <span v-else-if="book.emoji" style="font-size:46px;">{{ book.emoji }}</span>
       <i v-else class="ti ti-book" style="font-size:40px;color:#fff;opacity:.92;" aria-hidden="true"></i>
       <span class="cover-badge"><i class="ti ti-check" aria-hidden="true"></i></span>
     </button>

@@ -1,5 +1,5 @@
 export const MEDIUMS = [
-  { id: 'prose', label: 'Prose' },
+  { id: 'prose', label: 'Book' },
   { id: 'manga', label: 'Manga' },
   { id: 'comic', label: 'Comic' },
   { id: 'webtoon', label: 'Webtoon' },
@@ -16,6 +16,22 @@ export const GENRES = [
   'Nonfiction', 'Biography', 'Memoir', 'History', 'Science',
   'True crime', 'Self-help', 'Philosophy', 'Travel',
 ];
+
+// Reader titles. You climb on books finished OR hours read, whichever is further along,
+// so heavy webtoon/manga readers who rarely "finish a book" still level up.
+export const READER_TITLES = [
+  { books: 100, hours: 300, title: 'Living library' },
+  { books: 50, hours: 150, title: 'Loremaster' },
+  { books: 25, hours: 80, title: 'Book dragon' },
+  { books: 12, hours: 40, title: 'Bibliophile' },
+  { books: 5, hours: 15, title: 'Bookworm' },
+  { books: 1, hours: 3, title: 'Page-turner' },
+  { books: 0, hours: 0, title: 'New reader' },
+];
+export function readerTitleFor(books = 0, minutes = 0) {
+  const hours = (minutes || 0) / 60;
+  return (READER_TITLES.find((t) => books >= t.books || hours >= t.hours) || READER_TITLES[READER_TITLES.length - 1]).title;
+}
 
 // covers a reader can pick for a book (shared by the book page and the finish screen)
 export const COVER_EMOJIS = ['', '📕', '📗', '📘', '📙', '📚', '🐉', '🚀', '🔮', '🗺️', '🏰', '💀', '❤️', '🌙', '⭐', '🦄', '🐈', '☕', '🌸', '🔪', '🧪', '⚔️', '👑', '🌊'];
@@ -81,6 +97,14 @@ export function monthName(ym) {
   const [y, m] = (ym || '').split('-').map(Number);
   if (!y) return '';
   return new Date(y, m - 1, 1).toLocaleString('default', { month: 'long' });
+}
+
+// exact length of a timer lap, so a 20-second split never reads the same as a 2-minute one
+export function fmtLap(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), rem = s % 60;
+  return rem ? `${m}m ${rem}s` : `${m}m`;
 }
 
 export function fmtClock(totalSeconds) {

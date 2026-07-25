@@ -6,4 +6,8 @@ services:
       - "8787:8787"
     volumes:
       - ./data:/app/data
+    # Book search and barcode scanning. Get a token from
+    # https://hardcover.app/account/api and drop it in here.
+    # environment:
+    #   HARDCOVER_TOKEN: "your-token"
     restart: unless-stopped

@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from './db.js';
 import { baseCoins, COMFORT_ZONE_MULTIPLIER } from './coins.js';
 import { startBackups } from './backup.js';
+import { lookupEnabled, searchBooks, lookupIsbn, cleanIsbn, cleanBlurb } from './hardcover.js';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const STATIC_ROOT = process.env.BOOKCOIN_STATIC ?? join(import.meta.dirname, '../../app/dist');
@@ -25,6 +26,7 @@ const publicMember = (m) => ({
   monthlyGoalMinutes: m.monthly_goal_minutes, role: m.role,
   theme: m.theme || 'classic', emblem: m.emblem || '', mascot: m.mascot || 'wizard',
   avatar: m.avatar || '', householdId: m.household_id ?? null, onboarded: !!m.onboarded,
+  title: m.title || '', // '' = fall back to the automatic reader-title ladder
 });
 
 const validHouseholdId = (v) => {
@@ -200,9 +202,18 @@ const rowToSession = (r) => ({
   deleteRequested: !!r.delete_requested,
 });
 
+// A cover is a URL we hand straight to an <img>, so only ever store a plain
+// web address. Anything else (javascript:, data:) is dropped, not sanitised.
+const coverSrc = (v) => {
+  const s = String(v || '').trim().slice(0, 500);
+  return /^https?:\/\//i.test(s) ? s : '';
+};
+
 const rowToBook = (b) => ({
   id: b.id, memberId: b.member_id, title: b.title, author: b.author, status: b.status,
-  rating: b.rating, emoji: b.emoji || '', review: b.review || '', startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
+  rating: b.rating, emoji: b.emoji || '', review: b.review || '', isbn: b.isbn || '', cover: b.cover || '',
+  blurb: b.blurb || '',
+  startedAt: b.started_at, finishedAt: b.finished_at, createdAt: b.created_at,
 });
 
 const periodKeyFor = (quest) => (quest.period === 'month' ? periodStart() : 'once');
@@ -297,18 +308,39 @@ function computeBadges(memberId, totals) {
   const questsDone = db.prepare("SELECT COUNT(*) AS n FROM quest_claims WHERE member_id = ? AND status IN ('claimed','approved')").get(memberId).n;
   const redeemed = db.prepare("SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND status != 'cancelled'").get(memberId).n;
   const earned = db.prepare('SELECT COALESCE(SUM(amount),0) AS n FROM coin_txns WHERE member_id = ? AND amount > 0').get(memberId).n;
+  const finished = db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'finished'").get(memberId).n;
+  const longestSession = db.prepare('SELECT COALESCE(MAX(minutes),0) AS n FROM sessions WHERE member_id = ?').get(memberId).n;
+  const reviews = db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND review IS NOT NULL AND review != ''").get(memberId).n;
+  const busiestDay = db.prepare('SELECT COALESCE(MAX(c),0) AS n FROM (SELECT COUNT(*) AS c FROM sessions WHERE member_id = ? GROUP BY substr(created_at,1,10))').get(memberId).n;
+  // every badge also unlocks a wearable title (see POST /me/title)
   return [
-    { id: 'first', name: 'First steps', icon: 'ti-seedling', desc: 'Log your first reading', earned: totals.sessions >= 1 },
-    { id: 'bookworm', name: 'Bookworm', icon: 'ti-book', desc: 'Log 10 sessions', earned: totals.sessions >= 10 },
-    { id: 'marathon', name: 'Marathoner', icon: 'ti-run', desc: 'Read 10 hours total', earned: totals.minutes >= 600 },
-    { id: 'century', name: 'Century', icon: 'ti-stack', desc: 'Read 100 pages', earned: totals.pages >= 100 },
-    { id: 'explorer', name: 'Explorer', icon: 'ti-compass', desc: 'Read 5 genres', earned: genres.size >= 5 },
-    { id: 'omnivore', name: 'Omnivore', icon: 'ti-books', desc: 'Read 4 formats', earned: mediums >= 4 },
-    { id: 'streak', name: 'On fire', icon: 'ti-flame', desc: 'A 7-day streak', earned: streak >= 7 },
-    { id: 'quests', name: 'Quest hunter', icon: 'ti-wand', desc: 'Finish 5 quests', earned: questsDone >= 5 },
-    { id: 'spender', name: 'Treat yourself', icon: 'ti-gift', desc: 'Redeem a reward', earned: redeemed >= 1 },
-    { id: 'rich', name: 'Coin hoard', icon: 'ti-coins', desc: 'Earn 1,000 coins', earned: earned >= 1000 },
+    { id: 'first', name: 'First steps', title: 'The Beginning', icon: 'ti-seedling', desc: 'Log your first reading', earned: totals.sessions >= 1 },
+    { id: 'bookworm', name: 'Bookworm', title: 'Bookworm', icon: 'ti-book', desc: 'Log 10 sessions', earned: totals.sessions >= 10 },
+    { id: 'finisher', name: 'The end', title: 'Finisher', icon: 'ti-flag-check', desc: 'Finish your first book', earned: finished >= 1 },
+    { id: 'shelf10', name: 'Shelf builder', title: 'Shelf Builder', icon: 'ti-books', desc: 'Finish 10 books', earned: finished >= 10 },
+    { id: 'collector', name: 'Collector', title: 'The Collector', icon: 'ti-library', desc: 'Finish 25 books', earned: finished >= 25 },
+    { id: 'marathon', name: 'Marathoner', title: 'Marathoner', icon: 'ti-run', desc: 'Read 10 hours total', earned: totals.minutes >= 600 },
+    { id: 'devoted', name: 'Devoted', title: 'The Devoted', icon: 'ti-clock-hour-4', desc: 'Read 50 hours total', earned: totals.minutes >= 3000 },
+    { id: 'centuryhours', name: 'A hundred hours', title: 'Centurion', icon: 'ti-hourglass-high', desc: 'Read 100 hours total', earned: totals.minutes >= 6000 },
+    { id: 'deepdive', name: 'Deep dive', title: 'Deep Diver', icon: 'ti-anchor', desc: 'One session of 2 hours', earned: longestSession >= 120 },
+    { id: 'binge', name: 'Binge day', title: 'Binge Reader', icon: 'ti-bolt', desc: '5 sessions in one day', earned: busiestDay >= 5 },
+    { id: 'century', name: 'Century', title: 'Century Reader', icon: 'ti-stack', desc: 'Read 100 pages', earned: totals.pages >= 100 },
+    { id: 'explorer', name: 'Explorer', title: 'Explorer', icon: 'ti-compass', desc: 'Read 5 genres', earned: genres.size >= 5 },
+    { id: 'genremaster', name: 'Genre master', title: 'Genre Master', icon: 'ti-map-2', desc: 'Read 15 genres', earned: genres.size >= 15 },
+    { id: 'omnivore', name: 'Omnivore', title: 'Omnivore', icon: 'ti-books', desc: 'Read 4 formats', earned: mediums >= 4 },
+    { id: 'streak', name: 'On fire', title: 'On Fire', icon: 'ti-flame', desc: 'A 7-day streak', earned: streak >= 7 },
+    { id: 'streak30', name: 'Unbroken', title: 'Unbroken', icon: 'ti-calendar-check', desc: 'A 30-day streak', earned: streak >= 30 },
+    { id: 'critic', name: 'Critic', title: 'The Critic', icon: 'ti-quote', desc: 'Write 5 reviews', earned: reviews >= 5 },
+    { id: 'quests', name: 'Quest hunter', title: 'Quest Hunter', icon: 'ti-wand', desc: 'Finish 5 quests', earned: questsDone >= 5 },
+    { id: 'spender', name: 'Treat yourself', title: 'Big Spender', icon: 'ti-gift', desc: 'Redeem a reward', earned: redeemed >= 1 },
+    { id: 'rich', name: 'Coin hoard', title: 'Coin Hoarder', icon: 'ti-coins', desc: 'Earn 1,000 coins', earned: earned >= 1000 },
   ];
+}
+
+// badges a member has actually earned, as equippable titles
+function earnedTitles(memberId) {
+  const totals = db.prepare('SELECT COALESCE(SUM(minutes),0) AS minutes, COUNT(*) AS sessions, COALESCE(SUM(pages),0) AS pages FROM sessions WHERE member_id = ?').get(memberId);
+  return computeBadges(memberId, totals).filter((b) => b.earned).map((b) => b.title);
 }
 
 // ===================== api =====================
@@ -467,8 +499,8 @@ api.post('/me/books', async (c) => {
   if (!title) return c.json({ error: 'Title required' }, 400);
   const status = BOOK_STATUSES.includes(b.status) ? b.status : 'reading';
   const now = nowStr();
-  const info = db.prepare('INSERT INTO member_books (member_id, title, author, status, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(m.id, title, (b.author || '').trim(), status,
+  const info = db.prepare('INSERT INTO member_books (member_id, title, author, status, isbn, cover, blurb, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(m.id, title, (b.author || '').trim(), status, cleanIsbn(b.isbn).slice(0, 13), coverSrc(b.cover), cleanBlurb(b.blurb),
          status === 'want' ? null : now, status === 'finished' ? now : null);
   return c.json(rowToBook(db.prepare('SELECT * FROM member_books WHERE id = ?').get(Number(info.lastInsertRowid))));
 });
@@ -485,11 +517,14 @@ api.patch('/me/books/:id', async (c) => {
   const rating = b.rating != null ? (b.rating ? Math.max(1, Math.min(5, Math.round(Number(b.rating)))) : null) : bk.rating;
   const emoji = b.emoji != null ? String(b.emoji).slice(0, 8) : bk.emoji;
   const review = b.review != null ? String(b.review).slice(0, 2000) : bk.review;
+  const isbn = b.isbn != null ? cleanIsbn(b.isbn).slice(0, 13) : (bk.isbn || '');
+  const cover = b.cover != null ? coverSrc(b.cover) : (bk.cover || '');
+  const blurb = b.blurb != null ? cleanBlurb(b.blurb) : (bk.blurb || '');
   // stamp transitions: first time it starts / finishes
   const startedAt = bk.started_at || (status !== 'want' ? nowStr() : null);
   const finishedAt = status === 'finished' ? (bk.finished_at || nowStr()) : null;
-  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, emoji = ?, review = ?, started_at = ?, finished_at = ? WHERE id = ?')
-    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), emoji, review, startedAt, finishedAt, id);
+  db.prepare('UPDATE member_books SET title = ?, author = ?, status = ?, rating = ?, emoji = ?, review = ?, isbn = ?, cover = ?, blurb = ?, started_at = ?, finished_at = ? WHERE id = ?')
+    .run(title, author, status, status === 'finished' ? rating : (status === 'want' ? null : rating), emoji, review, isbn, cover, blurb, startedAt, finishedAt, id);
   return c.json(rowToBook(db.prepare('SELECT * FROM member_books WHERE id = ?').get(id)));
 });
 
@@ -497,6 +532,27 @@ api.delete('/me/books/:id', (c) => {
   const m = c.get('member');
   db.prepare('DELETE FROM member_books WHERE id = ? AND member_id = ?').run(Number(c.req.param('id')), m.id);
   return c.body(null, 204);
+});
+
+// ---- book lookup (proxied to Hardcover so the token never leaves the server) ----
+api.get('/lookup/status', (c) => c.json({ enabled: lookupEnabled() }));
+
+api.get('/lookup/search', async (c) => {
+  if (!lookupEnabled()) return c.json({ error: 'Book lookup is not set up on this server' }, 503);
+  try {
+    return c.json({ results: await searchBooks(c.req.query('q') || '', c.req.query('limit')) });
+  } catch (e) {
+    return c.json({ error: e.message || 'Book lookup failed' }, e.status || 502);
+  }
+});
+
+api.get('/lookup/isbn/:isbn', async (c) => {
+  if (!lookupEnabled()) return c.json({ error: 'Book lookup is not set up on this server' }, 503);
+  try {
+    return c.json({ result: await lookupIsbn(c.req.param('isbn')) });
+  } catch (e) {
+    return c.json({ error: e.message || 'Book lookup failed' }, e.status || 502);
+  }
 });
 
 api.get('/leaderboard', (c) => {
@@ -552,6 +608,16 @@ api.post('/me/pin', async (c) => {
   if (String(b.currentPin || '') !== m.pin) return c.json({ error: 'Current PIN is incorrect' }, 400);
   db.prepare('UPDATE members SET pin = ? WHERE id = ?').run(pin, m.id);
   return c.json({ ok: true });
+});
+
+// equip a title you've unlocked with a badge (empty string goes back to the automatic one)
+api.post('/me/title', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const want = String(b.title || '').trim();
+  if (want && !earnedTitles(m.id).includes(want)) return c.json({ error: "You haven't earned that title yet" }, 400);
+  db.prepare('UPDATE members SET title = ? WHERE id = ?').run(want, m.id);
+  return c.json(publicMember(db.prepare('SELECT * FROM members WHERE id = ?').get(m.id)));
 });
 
 // mark the first-run tutorial as seen (once per member)
@@ -669,7 +735,7 @@ api.post('/quests/:id/claim', (c) => {
 // ---- rewards / shop ----
 api.get('/rewards', (c) => {
   const m = c.get('member');
-  // a member sees everyone-scoped rewards + 'people' rewards they're an audience of
+  // a member sees everyone-scoped rewards + 'people' rewards they're an audience of, but never their own
   const rewards = db.prepare(`
     SELECT r.id, r.name, r.description, r.cost_coins AS costCoins, r.tier, r.stock, r.owner_cut AS ownerCut,
            r.owner_id AS ownerId, r.scope,
@@ -677,9 +743,11 @@ api.get('/rewards', (c) => {
     FROM rewards r
     LEFT JOIN members o ON o.id = r.owner_id
     WHERE r.status = 'approved'
+      AND r.owner_id != ?
       AND (r.scope = 'everyone' OR EXISTS (SELECT 1 FROM reward_audience ra WHERE ra.reward_id = r.id AND ra.member_id = ?))
-    ORDER BY r.cost_coins`).all(m.id);
-  return c.json({ balance: balance(m.id), rewards });
+    ORDER BY r.cost_coins`).all(m.id, m.id);
+  // audienceCount lets the UI say "just for you" only when it's genuinely 1:1
+  return c.json({ balance: balance(m.id), rewards: rewards.map((r) => ({ ...r, audienceCount: r.scope === 'people' ? audienceIds(r.id).length : 0 })) });
 });
 
 // any member can offer a reward (members' offers await admin approval; admins' go live)
@@ -1057,7 +1125,7 @@ api.get('/lists', (c) => {
     FROM lists l LEFT JOIN members o ON o.id = l.owner_id
     WHERE l.visibility = 'public' OR l.owner_id = ?
     ORDER BY (l.owner_id IS NULL) DESC, l.id`).all(me.id);
-  const books = db.prepare('SELECT id, list_id AS listId, title, author FROM list_books ORDER BY id').all();
+  const books = db.prepare('SELECT id, list_id AS listId, title, author, cover FROM list_books ORDER BY id').all();
   return c.json(lists.map((l) => ({
     ...l, mine: l.ownerId === me.id, curated: l.ownerId == null,
     books: books.filter((b) => b.listId === l.id),
@@ -1106,8 +1174,8 @@ api.post('/me/lists/:id/books', async (c) => {
   if (err) return err;
   const b = await c.req.json().catch(() => ({}));
   if (!(b.title || '').trim()) return c.json({ error: 'Title required' }, 400);
-  const info = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)')
-    .run(list.id, b.title.trim(), (b.author || '').trim());
+  const info = db.prepare('INSERT INTO list_books (list_id, title, author, cover) VALUES (?, ?, ?, ?)')
+    .run(list.id, b.title.trim(), (b.author || '').trim(), coverSrc(b.cover));
   return c.json({ id: Number(info.lastInsertRowid) });
 });
 
@@ -1146,8 +1214,8 @@ api.delete('/admin/lists/:id', (c) => {
 api.post('/admin/lists/:id/books', async (c) => {
   const b = await c.req.json().catch(() => ({}));
   if (!(b.title || '').trim()) return c.json({ error: 'Title required' }, 400);
-  const info = db.prepare('INSERT INTO list_books (list_id, title, author) VALUES (?, ?, ?)')
-    .run(Number(c.req.param('id')), b.title.trim(), b.author || '');
+  const info = db.prepare('INSERT INTO list_books (list_id, title, author, cover) VALUES (?, ?, ?, ?)')
+    .run(Number(c.req.param('id')), b.title.trim(), b.author || '', coverSrc(b.cover));
   return c.json({ id: Number(info.lastInsertRowid) });
 });
 
@@ -1158,7 +1226,8 @@ api.patch('/admin/lists/books/:bookId', async (c) => {
   const b = await c.req.json().catch(() => ({}));
   const title = b.title != null && String(b.title).trim() ? String(b.title).trim() : bk.title;
   const author = b.author != null ? String(b.author) : bk.author;
-  db.prepare('UPDATE list_books SET title = ?, author = ? WHERE id = ?').run(title, author, id);
+  const cover = b.cover != null ? coverSrc(b.cover) : (bk.cover || '');
+  db.prepare('UPDATE list_books SET title = ?, author = ?, cover = ? WHERE id = ?').run(title, author, cover, id);
   return c.json({ ok: true });
 });
 

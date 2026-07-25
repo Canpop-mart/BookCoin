@@ -37,6 +37,9 @@ async function save(patch, after) {
     if (after) after();
   } finally { busy.value = false; }
 }
+// Picked from the cover panel, so take the art, ISBN and blurb but leave the
+// title and author alone: this is retro-fitting a cover, not re-identifying the book.
+function attachCover(b) { save({ cover: b.cover, isbn: b.isbn, blurb: b.blurb }, () => { showCover.value = false; }); }
 function startEditMeta() { meta.title = book.value.title; meta.author = book.value.author || ''; editMeta.value = true; }
 function saveMeta() { if (!meta.title.trim()) return; save({ title: meta.title.trim(), author: meta.author.trim() }, () => { editMeta.value = false; }); }
 function startReview() { reviewDraft.value = book.value.review || ''; editReview.value = true; }
@@ -58,9 +61,10 @@ async function remove() {
 
     <!-- hero -->
     <div class="card" style="display:flex;flex-direction:column;gap:12px;align-items:center;text-align:center;">
-      <button class="av" style="width:74px;height:98px;border:none;border-radius:5px 9px 9px 5px;font-size:38px;cursor:pointer;box-shadow:0 4px 10px rgba(74,63,53,.22);"
+      <button class="av" style="width:74px;height:98px;border:none;border-radius:5px 9px 9px 5px;font-size:38px;cursor:pointer;box-shadow:0 4px 10px rgba(74,63,53,.22);overflow:hidden;padding:0;"
         :style="{ background: spineBg }" title="Change cover" @click="showCover = !showCover">
-        <span v-if="book.emoji">{{ book.emoji }}</span><i v-else class="ti ti-book" style="font-size:30px;color:#fff;opacity:.92;" aria-hidden="true"></i>
+        <img v-if="book.cover" :src="book.cover" alt="" style="width:100%;height:100%;object-fit:cover;" @error="book.cover = ''" />
+        <span v-else-if="book.emoji">{{ book.emoji }}</span><i v-else class="ti ti-book" style="font-size:30px;color:#fff;opacity:.92;" aria-hidden="true"></i>
       </button>
 
       <div v-if="!editMeta" style="min-width:0;">
@@ -77,10 +81,13 @@ async function remove() {
         </div>
       </div>
 
-      <div v-if="showCover" class="row" style="gap:6px;flex-wrap:wrap;justify-content:center;">
-        <button v-for="e in COVER_EMOJIS" :key="e || 'none'" class="chip" :class="{ on: (book.emoji || '') === e }" style="width:34px;height:34px;justify-content:center;padding:0;font-size:16px;" :aria-label="e || 'no cover'" @click="save({ emoji: e })">
-          <span v-if="e">{{ e }}</span><i v-else class="ti ti-ban" style="font-size:13px;" aria-hidden="true"></i>
-        </button>
+      <div v-if="showCover" style="width:100%;display:flex;flex-direction:column;gap:10px;">
+        <BookFinder @pick="attachCover" />
+        <div class="row" style="gap:6px;flex-wrap:wrap;justify-content:center;">
+          <button v-for="e in COVER_EMOJIS" :key="e || 'none'" class="chip" :class="{ on: !book.cover && (book.emoji || '') === e }" style="width:34px;height:34px;justify-content:center;padding:0;font-size:16px;" :aria-label="e || 'no cover'" @click="save({ emoji: e, cover: '' })">
+            <span v-if="e">{{ e }}</span><i v-else class="ti ti-ban" style="font-size:13px;" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
 
       <div class="row" style="gap:7px;justify-content:center;flex-wrap:wrap;">
@@ -107,6 +114,12 @@ async function remove() {
       </div>
     </div>
     <p v-if="book.finishedAt" class="sub" style="text-align:center;margin-top:-4px;"><i class="ti ti-confetti" style="color:var(--gold-d);" aria-hidden="true"></i> Finished {{ fmtDate(book.finishedAt) }}</p>
+
+    <!-- about this book: the synopsis from lookup, kept apart from the member's own review -->
+    <div v-if="book.blurb" class="card" style="display:flex;flex-direction:column;gap:6px;">
+      <div class="sub"><i class="ti ti-info-circle" style="color:var(--terra);" aria-hidden="true"></i> About this book <span style="opacity:.6;">· from Hardcover</span></div>
+      <p style="font-family:'Quicksand';line-height:1.5;white-space:pre-wrap;">{{ book.blurb }}</p>
+    </div>
 
     <!-- your thoughts (review) -->
     <div class="card" style="display:flex;flex-direction:column;gap:9px;">

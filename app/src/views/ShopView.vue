@@ -168,7 +168,7 @@ function submitOffer() {
             <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap;">
               <Avatar :avatar="r.ownerAvatar" :color="r.ownerColor" :initials="r.ownerInitials" :size="18" />
               <span class="sub">from {{ r.ownerName }}<span v-if="r.stock != null"> · {{ r.stock }} left</span></span>
-              <span v-if="r.scope === 'people'" class="chip" style="padding:1px 8px;font-size:11px;background:var(--blush-bg);color:var(--blush-d);"><i class="ti ti-user-check" aria-hidden="true"></i> just for you</span>
+              <span v-if="r.scope === 'people'" class="chip" style="padding:1px 8px;font-size:11px;background:var(--blush-bg);color:var(--blush-d);"><i class="ti ti-user-check" aria-hidden="true"></i> {{ r.audienceCount > 1 ? `for you + ${r.audienceCount - 1} more` : 'just for you' }}</span>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0;">

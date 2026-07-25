@@ -29,7 +29,18 @@ export const store = reactive({
 
   // --- reading timer (wall-clock based, so backgrounding never loses time) ---
   startTimer(title = '') {
-    this.timer = { startedAt: Date.now(), running: true, pausedAccumMs: 0, pausedAt: null, title };
+    this.timer = { startedAt: Date.now(), running: true, pausedAccumMs: 0, pausedAt: null, title, segments: [] };
+    this.save();
+  },
+  // bank what's on the clock and start a fresh lap, for when you switch books mid-sitting
+  splitTimer() {
+    if (!this.timer) return;
+    const seconds = Math.max(1, Math.round(this.elapsedMs() / 1000));
+    this.timer.segments = [...(this.timer.segments || []), { seconds, title: this.timer.title || '' }];
+    this.timer.startedAt = Date.now();
+    this.timer.pausedAccumMs = 0;
+    this.timer.pausedAt = this.timer.running ? null : Date.now();
+    this.timer.title = '';
     this.save();
   },
   pauseTimer() {

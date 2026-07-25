@@ -168,6 +168,8 @@ if (!memberCols.includes('emblem')) db.exec("ALTER TABLE members ADD COLUMN embl
 if (!memberCols.includes('mascot')) db.exec("ALTER TABLE members ADD COLUMN mascot TEXT NOT NULL DEFAULT 'wizard'");
 if (!memberCols.includes('onboarded')) db.exec('ALTER TABLE members ADD COLUMN onboarded INTEGER NOT NULL DEFAULT 0');
 if (!memberCols.includes('avatar')) db.exec("ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT ''");
+// equipped title, earned by unlocking the matching badge ('' = the automatic volume ladder)
+if (!memberCols.includes('title')) db.exec("ALTER TABLE members ADD COLUMN title TEXT NOT NULL DEFAULT ''");
 
 // --- migration: multi-household support (household is a soft grouping, not a wall) ---
 if (!memberCols.includes('household_id')) db.exec('ALTER TABLE members ADD COLUMN household_id INTEGER REFERENCES households(id)');
@@ -176,6 +178,15 @@ if (!memberCols.includes('household_id')) db.exec('ALTER TABLE members ADD COLUM
 const bookCols = db.prepare('PRAGMA table_info(member_books)').all().map((c) => c.name);
 if (!bookCols.includes('emoji')) db.exec("ALTER TABLE member_books ADD COLUMN emoji TEXT NOT NULL DEFAULT ''");
 if (!bookCols.includes('review')) db.exec("ALTER TABLE member_books ADD COLUMN review TEXT NOT NULL DEFAULT ''");
+
+// --- migration: real covers, from a scanned barcode or a book search ---
+if (!bookCols.includes('isbn')) db.exec("ALTER TABLE member_books ADD COLUMN isbn TEXT NOT NULL DEFAULT ''");
+if (!bookCols.includes('cover')) db.exec("ALTER TABLE member_books ADD COLUMN cover TEXT NOT NULL DEFAULT ''");
+// the book's own synopsis from lookup — metadata, never the member's review
+if (!bookCols.includes('blurb')) db.exec("ALTER TABLE member_books ADD COLUMN blurb TEXT NOT NULL DEFAULT ''");
+
+const listBookCols = db.prepare('PRAGMA table_info(list_books)').all().map((c) => c.name);
+if (!listBookCols.includes('cover')) db.exec("ALTER TABLE list_books ADD COLUMN cover TEXT NOT NULL DEFAULT ''");
 
 // --- migration: member-requested session removal (admin approves the deletion) ---
 const sessionCols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);

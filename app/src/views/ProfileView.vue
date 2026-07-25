@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api } from '../api';
 import { store } from '../store';
-import { fmtDuration, MEDIUMS, bookSpine } from '../data';
+import { fmtDuration, MEDIUMS, bookSpine, readerTitleFor } from '../data';
 import { AVATARS } from '../avatars';
 import pkg from '../../package.json';
 
@@ -37,14 +37,15 @@ const streak = computed(() => {
 });
 const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
 const booksFinished = computed(() => data.value?.shelf?.finishedTotal ?? 0);
-const readerTitle = computed(() => {
-  const b = booksFinished.value, m = data.value?.totals?.minutes || 0;
-  if (b >= 25 || m >= 9000) return 'Book dragon';
-  if (b >= 12) return 'Bibliophile';
-  if (b >= 5) return 'Bookworm';
-  if (b >= 1) return 'Page-turner';
-  return 'New reader';
-});
+// the automatic ladder is the fallback; a badge title can be equipped over it
+const autoTitle = computed(() => readerTitleFor(booksFinished.value, data.value?.totals?.minutes || 0));
+const displayTitle = computed(() => data.value?.member?.title || autoTitle.value);
+const unlockedTitles = computed(() => (data.value?.badges || []).filter((b) => b.earned).map((b) => b.title));
+async function setTitle(t) {
+  const updated = await api.setTitle(t);
+  store.setMember(updated);
+  await load();
+}
 const mediumLabel = (m) => MEDIUMS.find((x) => x.id === m)?.label || m;
 const year = new Date().getFullYear();
 const version = pkg.version;
@@ -98,6 +99,10 @@ async function cancelDelete(s) { await api.cancelDeleteSession(s.id); await load
 const logDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '');
 const earnedCount = computed(() => (data.value?.badges || []).filter((b) => b.earned).length);
 const selectedBadge = ref(null);
+// collapsed shows just the first row, earned ones first so it's your wins on display
+const badgesOpen = ref(false);
+const sortedBadges = computed(() => [...(data.value?.badges || [])].sort((a, b) => (b.earned ? 1 : 0) - (a.earned ? 1 : 0)));
+const shownBadges = computed(() => (badgesOpen.value ? sortedBadges.value : sortedBadges.value.slice(0, 4)));
 
 async function saveGoal() {
   savingGoal.value = true;
@@ -129,7 +134,7 @@ async function logout() {
         <span v-if="data.member.emblem" style="position:absolute;right:-2px;bottom:-2px;width:26px;height:26px;font-size:15px;background:var(--card);border:1px solid var(--line);border-radius:50%;display:flex;align-items:center;justify-content:center;">{{ data.member.emblem }}</span>
       </span>
       <div class="h" style="font-size:23px;margin-top:9px;">{{ data.member.name }}</div>
-      <div class="sub" style="color:var(--sage-d);">{{ readerTitle }}</div>
+      <div class="sub" style="color:var(--sage-d);">{{ displayTitle }}</div>
       <div v-if="rank || streak > 0" class="row" style="gap:6px;justify-content:center;flex-wrap:wrap;margin-top:11px;">
         <span v-if="rank" class="chip" style="background:var(--gold-bg);color:var(--gold-d);"><i :class="rank === 1 ? 'ti ti-crown' : 'ti ti-trophy'" aria-hidden="true"></i> {{ rank === 1 ? '1st this month' : ordinal(rank) + ' this month' }}</span>
         <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flame flame" aria-hidden="true"></i> {{ streak }}-day streak</span>
@@ -218,6 +223,14 @@ async function logout() {
             </div>
           </div>
           <div>
+            <div class="sub" style="margin-bottom:8px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Title<InfoBubble text="Badges you earn unlock titles you can wear. Automatic keeps pace with your books and hours." /></div>
+            <div class="row" style="gap:7px;flex-wrap:wrap;">
+              <button class="chip" :class="{ on: !data.member.title }" @click="setTitle('')">{{ autoTitle }} <span style="opacity:.7;">· auto</span></button>
+              <button v-for="t in unlockedTitles" :key="t" class="chip" :class="{ on: data.member.title === t }" @click="setTitle(t)">{{ t }}</button>
+            </div>
+            <div v-if="!unlockedTitles.length" class="sub" style="margin-top:6px;font-size:12px;">Earn badges to unlock more titles.</div>
+          </div>
+          <div>
             <div class="sub" style="margin-bottom:8px;"><i class="ti ti-lock" style="color:var(--terra);" aria-hidden="true"></i> Change PIN</div>
             <div class="row" style="gap:8px;flex-wrap:wrap;">
               <input v-model="pinForm.current" type="password" inputmode="numeric" autocomplete="off" placeholder="Current PIN" style="flex:1;min-width:120px;" />
@@ -250,9 +263,14 @@ async function logout() {
 
     <!-- badges as trophies -->
     <div class="card" style="display:flex;flex-direction:column;gap:14px;">
-      <span style="font-weight:600;font-size:14px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Badges<span class="sub" style="font-weight:400;"> · {{ earnedCount }} of {{ data.badges.length }} earned</span></span>
+      <div class="row" style="justify-content:space-between;">
+        <span style="font-weight:600;font-size:14px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Badges<span class="sub" style="font-weight:400;"> · {{ earnedCount }} of {{ data.badges.length }} earned</span></span>
+        <button class="chip" style="padding:3px 10px;" @click="badgesOpen = !badgesOpen">
+          {{ badgesOpen ? 'Less' : `All ${data.badges.length}` }} <i :class="badgesOpen ? 'ti ti-chevron-up' : 'ti ti-chevron-down'" style="font-size:14px;" aria-hidden="true"></i>
+        </button>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
-        <button v-for="b in data.badges" :key="b.id" @click="selectedBadge = selectedBadge && selectedBadge.id === b.id ? null : b"
+        <button v-for="b in shownBadges" :key="b.id" @click="selectedBadge = selectedBadge && selectedBadge.id === b.id ? null : b"
           style="background:none;border:none;cursor:pointer;text-align:center;padding:0;font-family:inherit;" :style="{ opacity: b.earned ? 1 : .35 }">
           <span class="av" style="width:46px;height:46px;margin:0 auto;transition:box-shadow .15s ease;"
             :style="[b.earned ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#EDE5D6', color: '#A99A85' }, selectedBadge && selectedBadge.id === b.id ? { boxShadow: '0 0 0 3px var(--terra)' } : {}]">

@@ -19,6 +19,24 @@ pnpm dev
 The Vite dev server proxies `/api` to `localhost:8787`, so just open **http://localhost:5173**.
 On first run the server seeds five family members with the default PIN **1234** (edit them later).
 
+## Book lookup (optional)
+
+Searching for a book by name, and scanning the barcode on its back, both run
+through [Hardcover]. Get a token from your [account's API page][hc-token] and
+give it to the server:
+
+```bash
+HARDCOVER_TOKEN="your-token" pnpm dev
+```
+
+For the NAS, uncomment `HARDCOVER_TOKEN` in `docker-compose.yml`. The token stays
+on the server and is never sent to the app, which matters because this repo is
+public and the APK is handed out. Without a token the app simply hides the search
+and scan buttons, and books get typed in by hand as before.
+
+Scanning needs a camera and a secure context, so it works in the APK and over
+HTTPS, but a browser on plain `http://` over the LAN will hide the scan button.
+
 ## Self-host (NAS)
 
 The Docker image is built in CI and published to GHCR
@@ -53,3 +71,5 @@ devices. For Play Store distribution you'd add a release keystore and signing st
 
 [Capacitor]: https://capacitorjs.com
 [Hono]: https://hono.dev
+[Hardcover]: https://hardcover.app
+[hc-token]: https://hardcover.app/account/api
