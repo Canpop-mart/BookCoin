@@ -29,7 +29,7 @@ function finish() {
   // every banked lap plus whatever is on the clock right now
   const laps = [...(store.timer?.segments || []), { seconds, title: t }];
   store.clearTimer();
-  store.draft = { seconds, title: t, segments: laps };
+  store.setDraft({ seconds, title: t, segments: laps });
   router.replace('/log');
 }
 function cancel() { store.clearTimer(); router.replace('/'); }

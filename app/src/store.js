@@ -6,7 +6,9 @@ export const store = reactive({
   token: saved.token || null,
   member: saved.member || null,
   serverUrl: saved.serverUrl || '', // '' = same origin (web); set to NAS URL in the app
-  draft: null, // in-progress reading session handed from timer -> log
+  // finished-but-unsaved session handed from timer -> log; persisted so a reload
+  // or app kill between finishing and saving doesn't lose the sitting
+  draft: saved.draft || null,
   deliveries: 0, // rewards of mine that someone bought and I owe — drives the Rewards nav badge
   questsReady: 0, // quests/challenges I can claim right now — drives the Quests nav badge
   finishResult: null, // transient coin result handed from the log screen to the finish screen
@@ -16,9 +18,10 @@ export const store = reactive({
 
   save() {
     localStorage.setItem('bookcoin', JSON.stringify({
-      token: this.token, member: this.member, serverUrl: this.serverUrl, timer: this.timer,
+      token: this.token, member: this.member, serverUrl: this.serverUrl, timer: this.timer, draft: this.draft,
     }));
   },
+  setDraft(d) { this.draft = d; this.save(); },
   setAuth(token, member) { this.token = token; this.member = member; this.save(); },
   setMember(member) { if (member) { this.member = member; this.save(); } },
   setDeliveries(n) { this.deliveries = n || 0; },

@@ -26,14 +26,29 @@ const genreList = ref(GENRES); // fallback; replaced by the admin-managed list b
 const allBooks = ref([]); // the reader's shelf, for the title picker
 const selectedBook = ref(null);
 
-// laps banked from the timer. More than one means this sitting covered several books,
-// and each lap is logged as its own session sharing one note.
-// the timer seeds each lap's minutes, but they stay editable: a split is a guess, not gospel
-const laps = ref((store.draft?.segments || []).map((s) => ({ minutes: Math.max(1, Math.round(s.seconds / 60)), title: s.title || '' })));
+// laps banked from the timer. More than one means this sitting covered several books.
+// the timer seeds each lap's minutes, but they stay editable: a split is a guess, not gospel.
+// each lap also carries its own format/genre/note, used only when "Each book" is on.
+const laps = ref((store.draft?.segments || []).map((s) => ({
+  minutes: Math.max(1, Math.round(s.seconds / 60)),
+  title: s.title || '',
+  medium: 'prose',
+  genres: [],
+  summary: '',
+})));
 const multi = computed(() => laps.value.length > 1);
+// when on, each book gets its own format, genre and note instead of one shared set
+const perBook = ref(false);
+const perBookActive = computed(() => multi.value && perBook.value);
 const lapMins = (l) => Math.max(1, Math.round(Number(l.minutes) || 1));
 const lapTotal = computed(() => laps.value.reduce((a, l) => a + lapMins(l), 0));
-// drop an accidental split; falling back to one lap becomes a normal single session
+function toggleLapGenre(lap, g) {
+  const i = lap.genres.indexOf(g);
+  if (i >= 0) lap.genres.splice(i, 1);
+  else lap.genres.push(g);
+}
+// drop an accidental split; falling back to one lap becomes a normal single session,
+// carrying that book's details into the single-session form
 function removeLap(i) {
   laps.value.splice(i, 1);
   if (laps.value.length === 1) {
@@ -43,6 +58,10 @@ function removeLap(i) {
     mins.value = m % 60;
     secs.value = 0;
     title.value = only.title || '';
+    medium.value = only.medium || 'prose';
+    genres.value = [...(only.genres || [])];
+    if (only.summary && !summary.value.trim()) summary.value = only.summary;
+    perBook.value = false;
   }
 }
 
@@ -126,23 +145,30 @@ async function resolveFinishedBook() {
 
 async function save() {
   error.value = '';
-  if (!summary.value.trim()) { error.value = "Add a note about what you read. It's the one thing we need."; return; }
-  if (!multi.value && rawSeconds.value < 1) { error.value = 'How long did you read?'; return; }
 
-  // several laps: one session per book, all sharing this note
+  // several laps: one session per book. Details are shared, or set per book.
   if (multi.value) {
+    if (perBook.value) {
+      const missing = laps.value.findIndex((l) => !l.summary.trim());
+      if (missing >= 0) { error.value = `Add a note for book ${missing + 1}. A short note is how reading gets checked.`; return; }
+    } else if (!summary.value.trim()) {
+      error.value = "Add a note about what you read. It's the one thing we need."; return;
+    }
     saving.value = true;
     try {
       let coins = 0, base = 0, last = null;
       for (const [i, lap] of laps.value.entries()) {
         last = await api.logSession({
-          title: lap.title, author: '', medium: medium.value, genres: genres.value,
+          title: lap.title, author: '',
+          medium: perBook.value ? lap.medium : medium.value,
+          genres: perBook.value ? lap.genres : genres.value,
           minutes: lapMins(lap), pages: null,
-          summary: summary.value, quote: i === 0 ? (quote.value || null) : null,
+          summary: perBook.value ? lap.summary : summary.value,
+          quote: i === 0 ? (quote.value || null) : null,
         });
         coins += last.coins; base += last.base;
       }
-      store.draft = null;
+      store.setDraft(null);
       result.value = { ...last, coins, base, minutes: totalMinutes.value, isNewGenre: false, sessionCount: laps.value.length };
       hapticWin();
     } catch (e) {
@@ -151,6 +177,10 @@ async function save() {
     return;
   }
 
+  // single session
+  if (!summary.value.trim()) { error.value = "Add a note about what you read. It's the one thing we need."; return; }
+  if (rawSeconds.value < 1) { error.value = 'How long did you read?'; return; }
+
   saving.value = true;
   try {
     const res = await api.logSession({
@@ -158,7 +188,7 @@ async function save() {
       minutes: totalMinutes.value, pages: pages.value ? Number(pages.value) : null,
       summary: summary.value, quote: quote.value || null,
     });
-    store.draft = null;
+    store.setDraft(null);
     if (finished.value && title.value.trim()) {
       const bookId = await resolveFinishedBook();
       store.setFinishResult(res);          // the finish screen shows the coins
@@ -185,10 +215,16 @@ async function save() {
     <div v-if="multi" class="card" style="background:var(--sage-bg);border-color:transparent;">
       <div class="row" style="gap:9px;">
         <i class="ti ti-arrows-split-2" style="font-size:20px;color:var(--sage-d);" aria-hidden="true"></i>
-        <span class="sub" style="color:var(--sage-d);font-weight:600;">{{ laps.length }} books this sitting<InfoBubble text="Each lap is logged as its own session. The note below covers the whole sitting." /></span>
+        <span class="sub" style="color:var(--sage-d);font-weight:600;">{{ laps.length }} books this sitting<InfoBubble text="Each book is logged as its own session. Keep one set of details for the whole sitting, or set the format, genre and note for each book on its own." /></span>
         <span class="sub" style="color:var(--sage-d);margin-left:auto;">{{ fmtDuration(totalMinutes) }}</span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+
+      <div class="row" style="gap:7px;margin-top:11px;">
+        <button class="chip" :class="{ on: !perBook }" style="flex:1;justify-content:center;" @click="perBook = false">Same for all</button>
+        <button class="chip" :class="{ on: perBook }" style="flex:1;justify-content:center;" @click="perBook = true">Each book</button>
+      </div>
+
+      <div v-if="!perBook" style="display:flex;flex-direction:column;gap:8px;margin-top:11px;">
         <div v-for="(l, i) in laps" :key="i" class="row" style="gap:8px;">
           <input v-model="l.title" :placeholder="`Book ${i + 1} title`" style="flex:1;min-width:0;" />
           <input v-model.number="l.minutes" type="number" min="1" max="1440" :aria-label="`Book ${i + 1} minutes`" style="width:62px;text-align:center;flex-shrink:0;" />
@@ -197,6 +233,39 @@ async function save() {
         </div>
       </div>
     </div>
+
+    <!-- per-book detail cards, when the sitting is logged as separate books -->
+    <template v-if="perBookActive">
+      <div v-for="(l, i) in laps" :key="'pb' + i" class="card" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="row" style="gap:8px;">
+          <span class="sub" style="font-weight:700;color:var(--sage-d);flex-shrink:0;">Book {{ i + 1 }}</span>
+          <input v-model="l.title" :placeholder="`Book ${i + 1} title`" style="flex:1;min-width:0;" />
+          <input v-model.number="l.minutes" type="number" min="1" max="1440" :aria-label="`Book ${i + 1} minutes`" style="width:52px;text-align:center;flex-shrink:0;" />
+          <span class="sub" style="flex-shrink:0;">m</span>
+          <button class="chip" aria-label="remove this book" style="padding:4px 8px;flex-shrink:0;" @click="removeLap(i)"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div>
+          <div class="sub" style="margin-bottom:6px;">Format</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <button v-for="md in MEDIUMS" :key="md.id" class="chip" :class="{ on: l.medium === md.id }" @click="l.medium = md.id">{{ md.label }}</button>
+          </div>
+        </div>
+        <div>
+          <div class="sub" style="margin-bottom:6px;">Genre</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">
+            <button v-for="g in genreList" :key="g" class="chip" :class="{ on: l.genres.includes(g) }" @click="toggleLapGenre(l, g)">{{ g }}</button>
+          </div>
+        </div>
+        <div>
+          <div class="row" style="justify-content:space-between;margin-bottom:6px;">
+            <span style="font-weight:600;font-size:13.5px;"><i class="ti ti-pencil" style="color:var(--terra);" aria-hidden="true"></i> Note</span>
+            <span class="chip" style="background:var(--blush-bg);color:var(--blush-d);padding:2px 10px;font-size:11px;font-weight:700;">Required</span>
+          </div>
+          <textarea v-model="l.summary" rows="2" placeholder="A sentence about this one: what happened, or what you thought."
+            :style="{ borderColor: error && !l.summary.trim() ? 'var(--terra)' : 'var(--line)' }"></textarea>
+        </div>
+      </div>
+    </template>
 
     <template v-else>
     <div class="card" style="background:var(--sage-bg);border-color:transparent;">
@@ -264,23 +333,23 @@ async function save() {
     </div>
     </template>
 
-    <div>
+    <div v-if="!perBookActive">
       <div class="row" style="justify-content:space-between;margin-bottom:7px;">
-        <span style="font-weight:600;"><i class="ti ti-pencil" style="color:var(--terra);" aria-hidden="true"></i> Your reading note<InfoBubble text="A short note is how reading gets checked, so it's the one part we ask everyone for." /></span>
+        <span style="font-weight:600;"><i class="ti ti-pencil" style="color:var(--terra);" aria-hidden="true"></i> {{ multi ? 'Note for the sitting' : 'Your reading note' }}<InfoBubble text="A short note is how reading gets checked, so it's the one part we ask everyone for." /></span>
         <span class="chip" style="background:var(--blush-bg);color:var(--blush-d);padding:2px 10px;font-size:11px;font-weight:700;">Required</span>
       </div>
       <textarea v-model="summary" placeholder="A sentence or two: what you read, what happened, or what you thought."
         :style="{ borderColor: error && noteMissing ? 'var(--terra)' : 'var(--line)' }"></textarea>
     </div>
 
-    <div>
+    <div v-if="!perBookActive">
       <div class="sub" style="margin-bottom:7px;">Format</div>
       <div style="display:flex;flex-wrap:wrap;gap:7px;">
         <button v-for="md in MEDIUMS" :key="md.id" class="chip" :class="{ on: medium === md.id }" @click="medium = md.id">{{ md.label }}</button>
       </div>
     </div>
 
-    <div>
+    <div v-if="!perBookActive">
       <div class="sub" style="margin-bottom:7px;">Genre <span v-if="genres.length" style="color:var(--gold-d);">· new genres earn a bonus</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:7px;">
         <button v-for="g in genreList" :key="g" class="chip" :class="{ on: genres.includes(g) }" @click="toggleGenre(g)">{{ g }}</button>
