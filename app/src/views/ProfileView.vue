@@ -67,6 +67,24 @@ const EMBLEMS = ['', '📚', '🦉', '🐉', '🌙', '☕', '🪐', '🌟', '�
 const AVATAR_COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const showCustomize = ref(false);
 const showMore = ref(false);
+
+// suggestion box: a quiet way for anyone to send the group's admins an idea
+const showSuggest = ref(false);
+const suggestText = ref('');
+const suggestSending = ref(false);
+const suggestSent = ref(false);
+async function sendSuggestion() {
+  const t = suggestText.value.trim();
+  if (!t || suggestSending.value) return;
+  suggestSending.value = true;
+  try {
+    await api.sendSuggestion(t);
+    suggestText.value = '';
+    suggestSent.value = true;
+    setTimeout(() => { suggestSent.value = false; showSuggest.value = false; }, 1600);
+  } catch { /* keep the text so they can retry */ }
+  finally { suggestSending.value = false; }
+}
 async function setAppearance(patch) {
   const updated = await api.setAppearance(patch);
   store.setMember(updated);   // recolours nav avatar + applies theme app-wide
@@ -331,7 +349,19 @@ async function logout() {
       </div>
     </div>
 
-    <button v-if="isMe && data.member.role === 'admin'" class="btn soft" style="margin-top:8px;" @click="router.push('/admin')"><i class="ti ti-settings" aria-hidden="true"></i> Admin</button>
+    <template v-if="isMe">
+      <button class="btn soft" style="margin-top:8px;" @click="showSuggest = !showSuggest"><i class="ti ti-bulb" aria-hidden="true"></i> Suggestion box</button>
+      <div v-if="showSuggest" class="card pop-in" style="display:flex;flex-direction:column;gap:9px;">
+        <div class="sub"><i class="ti ti-bulb" style="color:var(--gold-d);" aria-hidden="true"></i> An idea for the group? Send it to whoever runs your BookCoin.</div>
+        <template v-if="!suggestSent">
+          <textarea v-model="suggestText" rows="3" placeholder="A feature you'd love, something confusing, a reward idea…"></textarea>
+          <button class="btn" :disabled="suggestSending || !suggestText.trim()" @click="sendSuggestion"><i class="ti ti-send" aria-hidden="true"></i> {{ suggestSending ? 'Sending…' : 'Send suggestion' }}</button>
+        </template>
+        <div v-else class="sub" style="color:var(--sage-d);text-align:center;padding:6px 0;"><i class="ti ti-check" aria-hidden="true"></i> Thanks! Sent to your admins.</div>
+      </div>
+    </template>
+
+    <button v-if="isMe && data.member.role === 'admin'" class="btn soft" @click="router.push('/admin')"><i class="ti ti-settings" aria-hidden="true"></i> Admin</button>
     <button v-if="isMe" class="btn soft" @click="logout"><i class="ti ti-logout" aria-hidden="true"></i> Log out</button>
     <div class="sub" style="text-align:center;font-size:11px;opacity:.6;margin-top:6px;">BookCoin v{{ version }}</div>
   </div>

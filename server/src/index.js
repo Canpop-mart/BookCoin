@@ -563,6 +563,16 @@ api.get('/lookup/isbn/:isbn', async (c) => {
   }
 });
 
+// ---- suggestion box (members submit, admins read) ----
+api.post('/me/suggestions', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const text = String(b.text || '').trim().slice(0, 1000);
+  if (!text) return c.json({ error: 'Write a suggestion first' }, 400);
+  db.prepare('INSERT INTO suggestions (member_id, text) VALUES (?, ?)').run(m.id, text);
+  return c.json({ ok: true });
+});
+
 api.get('/leaderboard', (c) => {
   const period = c.req.query('period') === 'all' ? 'all' : 'month';
   const monthFilter = period === 'month' ? 'AND s.created_at >= ?' : '';
@@ -1320,6 +1330,24 @@ api.post('/admin/genres', async (c) => {
 
 api.delete('/admin/genres/:id', (c) => {
   db.prepare('DELETE FROM genres WHERE id = ?').run(Number(c.req.param('id')));
+  return c.body(null, 204);
+});
+
+// ---- suggestions (admin) ----
+api.get('/admin/suggestions', (c) => c.json(
+  db.prepare(`
+    SELECT s.id, s.text, s.archived, s.created_at AS createdAt,
+           m.name, m.initials, m.color, m.avatar
+    FROM suggestions s JOIN members m ON m.id = s.member_id
+    ORDER BY s.archived ASC, s.id DESC`).all()));
+
+api.post('/admin/suggestions/:id/archive', (c) => {
+  db.prepare('UPDATE suggestions SET archived = 1 WHERE id = ?').run(Number(c.req.param('id')));
+  return c.json({ ok: true });
+});
+
+api.delete('/admin/suggestions/:id', (c) => {
+  db.prepare('DELETE FROM suggestions WHERE id = ?').run(Number(c.req.param('id')));
   return c.body(null, 204);
 });
 

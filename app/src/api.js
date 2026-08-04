@@ -70,6 +70,7 @@ export const api = {
   lookupIsbn: (isbn) => req('/lookup/isbn/' + encodeURIComponent(isbn)),
   genres: () => req('/genres'),
   households: () => req('/households'),
+  sendSuggestion: (text) => req('/me/suggestions', { method: 'POST', body: { text } }),
 
   admin: {
     members: () => req('/admin/members'),
@@ -106,5 +107,8 @@ export const api = {
     deleteGenre: (id) => req(`/admin/genres/${id}`, { method: 'DELETE' }),
     resetActivity: () => req('/admin/reset-activity', { method: 'POST' }),
     finalizeMonth: () => req('/admin/finalize-month', { method: 'POST' }),
+    suggestions: () => req('/admin/suggestions'),
+    archiveSuggestion: (id) => req(`/admin/suggestions/${id}/archive`, { method: 'POST' }),
+    deleteSuggestion: (id) => req(`/admin/suggestions/${id}`, { method: 'DELETE' }),
   },
 };

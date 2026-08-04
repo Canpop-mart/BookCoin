@@ -34,6 +34,9 @@
 }
 
 * { box-sizing: border-box; }
+/* buttons default to the UA text color (black), which breaks card-styled buttons
+   in dark mode; inherit instead so .btn/.chip's explicit colors still win */
+button { color: inherit; }
 html, body, #app { height: 100%; margin: 0; }
 body {
   background: var(--paper);

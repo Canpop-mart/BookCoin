@@ -19,6 +19,7 @@ const sessionDeletions = ref([]);
 const lists = ref([]);
 const genres = ref([]);
 const households = ref([]);
+const suggestions = ref([]);
 
 const COLORS = ['#E0785A', '#8FA97C', '#D99A2B', '#C58BA6', '#7BA6C4', '#B07CC6', '#6FB0A0', '#D98C6A'];
 const mForm = reactive({ id: null, name: '', pin: '', role: 'member', goalHours: 15, color: '', householdId: null });
@@ -38,8 +39,9 @@ const pendingCount = computed(() => claims.value.length + pendingRewards.value.l
 const TAB_GROUPS = [
   { label: 'People', tabs: [['members', 'Members'], ['households', 'Households']] },
   { label: 'Game', tabs: [['quests', 'Quests'], ['challenges', 'Challenges'], ['bounties', 'Bounties'], ['rewards', 'Rewards'], ['lists', 'Lists'], ['genres', 'Genres']] },
-  { label: 'Ops', tabs: [['approvals', 'Approvals'], ['reset', 'Data']] },
+  { label: 'Ops', tabs: [['approvals', 'Approvals'], ['suggestions', 'Suggestions'], ['reset', 'Data']] },
 ];
+const openSuggestions = computed(() => suggestions.value.filter((s) => !s.archived));
 const QTYPES_AUTO = QTYPES.filter((t) => t[0] !== 'manual');
 const autoQuests = computed(() => quests.value.filter((q) => q.kind !== 'bounty' && q.type !== 'manual'));
 const challengeQuests = computed(() => quests.value.filter((q) => q.kind !== 'bounty' && q.type === 'manual'));
@@ -100,6 +102,7 @@ async function load() {
       api.admin.members(), api.admin.quests(), api.admin.rewards(), api.admin.redemptions(), api.admin.claims(), api.lists(), api.admin.genres(), api.households(),
     ]);
     sessionDeletions.value = await api.admin.sessionDeletions();
+    suggestions.value = await api.admin.suggestions();
     for (const l of lists.value) if (!bookInput[l.id]) bookInput[l.id] = { title: '', author: '' };
   } catch (e) {
     if (/admin/i.test(e.message)) allowed.value = false;
@@ -229,7 +232,7 @@ async function addBook(l) {
         <div v-for="grp in TAB_GROUPS" :key="grp.label" class="row" style="gap:6px;flex-wrap:wrap;align-items:center;">
           <span class="sub" style="width:48px;flex-shrink:0;font-size:10px;text-transform:uppercase;letter-spacing:.6px;">{{ grp.label }}</span>
           <button v-for="t in grp.tabs" :key="t[0]" class="chip" :class="{ on: tab === t[0] }" @click="tab = t[0]">
-            {{ t[1] }}<span v-if="t[0] === 'approvals' && pendingCount"> ({{ pendingCount }})</span>
+            {{ t[1] }}<span v-if="t[0] === 'approvals' && pendingCount"> ({{ pendingCount }})</span><span v-else-if="t[0] === 'suggestions' && openSuggestions.length"> ({{ openSuggestions.length }})</span>
           </button>
         </div>
       </div>
@@ -466,6 +469,23 @@ async function addBook(l) {
             <button aria-label="remove genre" @click="removeGenre(g)" style="background:none;border:none;cursor:pointer;color:var(--ink2);padding:0;display:flex;"><i class="ti ti-x" aria-hidden="true"></i></button>
           </span>
           <div v-if="!genres.length" class="sub">No genres yet.</div>
+        </div>
+      </template>
+
+      <!-- SUGGESTIONS: member-submitted ideas -->
+      <template v-if="tab === 'suggestions'">
+        <div v-if="!suggestions.length" class="card sub">No suggestions yet. Members can send them from their profile.</div>
+        <div v-for="s in suggestions" :key="s.id" class="card" style="display:flex;flex-direction:column;gap:8px;" :style="s.archived ? { opacity: .55 } : {}">
+          <div class="row" style="gap:9px;">
+            <Avatar :avatar="s.avatar" :color="s.color" :initials="s.initials" :size="26" />
+            <span style="font-weight:600;font-size:14px;">{{ s.name }}</span>
+            <span class="sub" style="margin-left:auto;">{{ (s.createdAt || '').slice(0, 10) }}</span>
+          </div>
+          <p style="margin:0;line-height:1.5;white-space:pre-wrap;">{{ s.text }}</p>
+          <div class="row" style="gap:8px;">
+            <button v-if="!s.archived" class="chip" style="background:var(--sage-bg);color:var(--sage-d);" @click="act(() => api.admin.archiveSuggestion(s.id))"><i class="ti ti-check" aria-hidden="true"></i> Mark handled</button>
+            <button class="chip" style="color:var(--terra-d);margin-left:auto;" @click="act(() => api.admin.deleteSuggestion(s.id))"><i class="ti ti-trash" aria-hidden="true"></i></button>
+          </div>
         </div>
       </template>
 

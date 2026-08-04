@@ -7,6 +7,9 @@ import { hapticWin } from '../haptics';
 import { MEDIUMS, GENRES, fmtDuration } from '../data';
 
 const router = useRouter();
+// reached from the reading timer (draft carries banked laps), so offer a way back
+const cameFromTimer = !!(store.draft && Array.isArray(store.draft.segments) && store.draft.segments.length);
+function backToTimer() { store.resumeFromDraft(); router.replace('/reading'); }
 const draftSec = store.draft?.seconds ?? (store.draft?.minutes != null ? store.draft.minutes * 60 : 1200);
 const hours = ref(Math.floor(draftSec / 3600));
 const mins = ref(Math.floor((draftSec % 3600) / 60));
@@ -208,6 +211,7 @@ async function save() {
 <template>
   <div class="screen full" v-if="!result">
     <div class="row" style="justify-content:space-between;">
+      <button v-if="cameFromTimer" class="chip" @click="backToTimer"><i class="ti ti-arrow-left" aria-hidden="true"></i> Back to timer</button>
       <span class="h">Log your reading</span>
       <button class="chip" @click="router.replace('/')"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
@@ -267,7 +271,8 @@ async function save() {
       </div>
     </template>
 
-    <template v-else>
+    <!-- single-session details: only in single mode, never when a sitting is split -->
+    <template v-if="!multi">
     <div class="card" style="background:var(--sage-bg);border-color:transparent;">
       <div class="row" style="gap:9px;">
         <i class="ti ti-clock" style="font-size:20px;color:var(--sage-d);" aria-hidden="true"></i>

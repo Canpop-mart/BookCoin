@@ -22,6 +22,23 @@ export const store = reactive({
     }));
   },
   setDraft(d) { this.draft = d; this.save(); },
+  // rebuild a running timer from the draft, for "back to timer" when Done was hit
+  // by mistake. The last segment is the lap that was on the clock; earlier ones
+  // are the banked laps. Returns false if the draft can't be resumed.
+  resumeFromDraft() {
+    const d = this.draft;
+    if (!d || !Array.isArray(d.segments) || !d.segments.length) return false;
+    const segs = d.segments.slice();
+    const last = segs.pop();
+    this.timer = {
+      startedAt: Date.now() - Math.max(0, (last.seconds || 0)) * 1000,
+      running: true, pausedAccumMs: 0, pausedAt: null,
+      title: last.title || '', segments: segs,
+    };
+    this.draft = null;
+    this.save();
+    return true;
+  },
   setAuth(token, member) { this.token = token; this.member = member; this.save(); },
   setMember(member) { if (member) { this.member = member; this.save(); } },
   setDeliveries(n) { this.deliveries = n || 0; },
