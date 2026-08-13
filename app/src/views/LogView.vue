@@ -70,7 +70,11 @@ function removeLap(i) {
 
 onMounted(async () => {
   try { const g = await api.genres(); if (Array.isArray(g) && g.length) genreList.value = g; } catch { /* keep the fallback list */ }
-  try { allBooks.value = await api.books(); } catch { /* picker just won't suggest */ }
+  try {
+    allBooks.value = await api.books();
+    // if the session was started from a chosen shelf book, link straight to it
+    if (store.draft?.bookId) selectedBook.value = allBooks.value.find((b) => b.id === store.draft.bookId) || null;
+  } catch { /* picker just won't suggest */ }
 });
 
 const rawSeconds = computed(() => (hours.value || 0) * 3600 + (mins.value || 0) * 60 + (secs.value || 0));
@@ -99,7 +103,8 @@ function pickBook(b) { title.value = b.title; author.value = b.author || ''; sel
 
 // chosen from the book search or a scanned barcode: fill the fields now, and
 // keep the cover/blurb so they come along if this turns into a shelf book below
-const picked = reactive({ cover: '', isbn: '', blurb: '' });
+// seed the cover from the timer's chosen book, so it shows here too
+const picked = reactive({ cover: store.draft?.cover || '', isbn: '', blurb: '' });
 function fillFromLookup(b) {
   title.value = b.title;
   author.value = b.author || '';

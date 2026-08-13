@@ -48,8 +48,12 @@ export const store = reactive({
   logout() { this.token = null; this.member = null; this.draft = null; this.timer = null; this.save(); },
 
   // --- reading timer (wall-clock based, so backgrounding never loses time) ---
-  startTimer(title = '') {
-    this.timer = { startedAt: Date.now(), running: true, pausedAccumMs: 0, pausedAt: null, title, segments: [] };
+  // meta.cover / meta.bookId tie the session to a book picked from the shelf
+  startTimer(title = '', meta = {}) {
+    this.timer = {
+      startedAt: Date.now(), running: true, pausedAccumMs: 0, pausedAt: null,
+      title, segments: [], cover: meta.cover || '', bookId: meta.bookId || null,
+    };
     this.save();
   },
   // bank what's on the clock and start a fresh lap, for when you switch books mid-sitting
@@ -60,7 +64,10 @@ export const store = reactive({
     this.timer.startedAt = Date.now();
     this.timer.pausedAccumMs = 0;
     this.timer.pausedAt = this.timer.running ? null : Date.now();
+    // a new lap is a different (unlabeled) book, so drop the previous book's tag
     this.timer.title = '';
+    this.timer.cover = '';
+    this.timer.bookId = null;
     this.save();
   },
   pauseTimer() {
