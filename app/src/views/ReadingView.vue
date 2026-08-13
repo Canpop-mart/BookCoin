@@ -20,10 +20,8 @@ onMounted(async () => {
     choosing.value = true;
     try {
       const books = await api.books();
-      // the books you'd actually sit down with, reading-now first then up-next
-      shelf.value = books
-        .filter((b) => b.status === 'reading' || b.status === 'want')
-        .sort((a, b) => (a.status === b.status ? 0 : a.status === 'reading' ? -1 : 1));
+      // only what you're actively reading, not the up-next pile
+      shelf.value = books.filter((b) => b.status === 'reading');
     } catch { /* no shelf suggestions, still fine to start */ }
     finally { loadingShelf.value = false; }
   }
@@ -83,12 +81,11 @@ function cancel() { store.clearTimer(); router.replace('/'); }
           <span style="flex:1;min-width:0;">
             <span style="font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ b.title }}</span>
             <span class="sub" v-if="b.author">{{ b.author }}</span>
-            <span class="sub" v-else>{{ b.status === 'reading' ? 'Reading now' : 'Up next' }}</span>
           </span>
           <i class="ti ti-player-play" style="color:var(--terra);font-size:19px;flex-shrink:0;" aria-hidden="true"></i>
         </button>
       </div>
-      <div v-else class="card sub" style="text-align:center;">Your shelf is empty. Start now and add the book while you log.</div>
+      <div v-else class="card sub" style="text-align:center;">Nothing marked as reading right now. Start below, or mark a book as reading on your shelf.</div>
 
       <button class="btn soft" style="margin-top:2px;" @click="startBlank"><i class="ti ti-clock" aria-hidden="true"></i> Start without a book</button>
     </template>
