@@ -12,6 +12,7 @@ import ShelfView from './views/ShelfView.vue';
 import BookView from './views/BookView.vue';
 import FinishView from './views/FinishView.vue';
 import JourneyView from './views/JourneyView.vue';
+import AchievementsView from './views/AchievementsView.vue';
 import ShopView from './views/ShopView.vue';
 import AdminView from './views/AdminView.vue';
 import CeremonyView from './views/CeremonyView.vue';
@@ -27,6 +28,7 @@ const routes = [
   { path: '/book/:id', component: BookView },
   { path: '/finished/:id', component: FinishView, meta: { full: true } },
   { path: '/journey', component: JourneyView },
+  { path: '/achievements/:id?', component: AchievementsView },
   { path: '/nook', component: NookView },
   { path: '/shop', component: ShopView },
   { path: '/profile/:id?', component: ProfileView },

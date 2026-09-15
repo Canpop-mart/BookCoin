@@ -43,18 +43,22 @@ const seconds = computed(() => { now.value; return Math.floor(store.elapsedMs() 
 const title = computed({ get: () => store.timer?.title || '', set: (v) => store.setTimerTitle(v) });
 const cover = computed(() => store.timer?.cover || '');
 const segments = computed(() => store.timer?.segments || []);
+const quote = computed({ get: () => store.timer?.quote || '', set: (v) => store.setTimerQuote(v) });
+const quoteOpen = ref(false);
 
 function toggle() { running.value ? store.pauseTimer() : store.resumeTimer(); }
 function split() { store.splitTimer(); }
+function removeSegment(i) { store.removeSegment(i); }
 // marking a book finished lives on the log screen, not here
 function finish() {
   const seconds = Math.max(1, Math.round(store.elapsedMs() / 1000));
   const t = store.timer?.title || '';
-  // every banked lap plus whatever is on the clock right now
-  const laps = [...(store.timer?.segments || []), { seconds, title: t }];
+  const q = store.timer?.quote || '';
+  // every banked lap plus whatever is on the clock right now, each with its quote
+  const laps = [...(store.timer?.segments || []), { seconds, title: t, quote: q }];
   const meta = { bookId: store.timer?.bookId || null, cover: store.timer?.cover || '' };
   store.clearTimer();
-  store.setDraft({ seconds, title: t, segments: laps, ...meta });
+  store.setDraft({ seconds, title: t, segments: laps, quote: q, ...meta });
   router.replace('/log');
 }
 function cancel() { store.clearTimer(); router.replace('/'); }
@@ -113,13 +117,24 @@ function cancel() { store.clearTimer(); router.replace('/'); }
       </div>
       <div class="sub" style="font-size:12px;opacity:.8;max-width:240px;">Leave the app if you like. Your time keeps counting.</div>
       <div v-if="segments.length" class="row" style="gap:6px;flex-wrap:wrap;justify-content:center;max-width:300px;">
-        <span v-for="(s, i) in segments" :key="i" class="chip" style="font-size:12px;background:var(--sage-bg);color:var(--sage-d);">
+        <span v-for="(s, i) in segments" :key="i" class="chip" style="font-size:12px;background:var(--sage-bg);color:var(--sage-d);gap:4px;">
           <i class="ti ti-check" aria-hidden="true"></i> {{ s.title || `Book ${i + 1}` }} · {{ fmtLap(s.seconds) }}
+          <button type="button" aria-label="remove this split" style="border:none;background:none;cursor:pointer;color:inherit;padding:0;display:inline-flex;opacity:.75;" @click="removeSegment(i)"><i class="ti ti-x" style="font-size:12px;" aria-hidden="true"></i></button>
         </span>
       </div>
     </div>
 
     <div style="display:flex;flex-direction:column;gap:10px;">
+      <!-- jot a quote in the moment, without stopping the clock -->
+      <div v-if="quoteOpen" class="card" style="text-align:left;display:flex;flex-direction:column;gap:8px;padding:12px 14px;">
+        <textarea v-model="quote" rows="2" placeholder="A line worth keeping. Type or paste it." style="min-height:56px;"></textarea>
+        <button class="chip" style="align-self:flex-end;background:var(--sage-bg);color:var(--sage-d);" @click="quoteOpen = false"><i class="ti ti-check" aria-hidden="true"></i> Done</button>
+      </div>
+      <template v-else>
+        <p v-if="quote" class="sub" style="font-style:italic;margin:0;max-width:320px;align-self:center;">“{{ quote }}”</p>
+        <button class="chip" style="align-self:center;" @click="quoteOpen = true"><i class="ti ti-quote" aria-hidden="true"></i> {{ quote ? 'Edit quote' : 'Save a quote' }}</button>
+      </template>
+
       <div class="row" style="gap:10px;">
         <button class="btn soft" @click="toggle">
           <i :class="running ? 'ti ti-player-pause' : 'ti ti-player-play'" aria-hidden="true"></i>

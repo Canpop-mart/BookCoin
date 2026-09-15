@@ -17,6 +17,10 @@
   --line: #ECDDC8;
   --chip: #F3E7D4;
   --chip-ink: #86735A;
+  /* badge rarity, fixed across accent themes (rarity is a constant, not a mood) */
+  --r-common: #A9977C;
+  --r-rare: #C68A1E;
+  --r-legendary: #9B72C7;
 }
 
 /* ---------- free themes: shift the accent + a cozy evening (dark) mode ---------- */
@@ -31,6 +35,7 @@
   --gold: #E0A53C; --gold-bg: #473922; --gold-d: #EFC97E;
   --blush-bg: #3F2C32; --blush-d: #E6AEBA;
   --line: #403930; --chip: #3B342D; --chip-ink: #CBBBA0;
+  --r-common: #B7A588; --r-rare: #E0A53C; --r-legendary: #BC98E6;
 }
 
 * { box-sizing: border-box; }

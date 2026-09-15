@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../api';
+import { store } from '../store';
 import { bookSpine } from '../data';
 
 const router = useRouter();
@@ -14,6 +15,23 @@ const q = ref('');
 
 async function load() { try { books.value = await api.books(); } finally { loading.value = false; } }
 onMounted(load);
+
+// My Shelf holds two collections: your books and the quotes you've saved
+const view = ref('books');
+const quotes = ref([]);
+const quotesLoaded = ref(false);
+async function loadQuotes() { try { quotes.value = await api.myQuotes(); } finally { quotesLoaded.value = true; } }
+function switchTo(v) { view.value = v; if (v === 'quotes' && !quotesLoaded.value) loadQuotes(); }
+
+// pin a quote to your public profile straight from the collection
+const pinnedQuote = computed(() => store.member?.pinnedQuote || '');
+const isPinned = (qq) => !!qq.quote && qq.quote === pinnedQuote.value;
+async function togglePin(qq) {
+  const updated = isPinned(qq)
+    ? await api.setPinnedQuote({ quote: '' })
+    : await api.setPinnedQuote({ quote: qq.quote, book: qq.title || '' });
+  store.setMember(updated);
+}
 
 // totals (for the summary header) stay unfiltered; the lists below filter by the search box
 const reading = computed(() => books.value.filter((b) => b.status === 'reading'));
@@ -79,6 +97,13 @@ async function remove(b) {
       <button class="chip" style="flex:1;justify-content:center;" @click="router.push('/lists')"><i class="ti ti-list-search" aria-hidden="true"></i> Reading lists</button>
     </div>
 
+    <!-- two collections within My Shelf: your books and your saved quotes -->
+    <div class="row" style="gap:7px;">
+      <button class="chip" :class="{ on: view === 'books' }" @click="switchTo('books')"><i class="ti ti-books" aria-hidden="true"></i> Books</button>
+      <button class="chip" :class="{ on: view === 'quotes' }" @click="switchTo('quotes')"><i class="ti ti-quote" aria-hidden="true"></i> Quotes<span v-if="quotesLoaded && quotes.length"> · {{ quotes.length }}</span></button>
+    </div>
+
+    <template v-if="view === 'books'">
     <div class="card row" style="justify-content:space-between;background:var(--gold-bg);border-color:#EBD49B;">
       <div>
         <div style="font-weight:600;"><i class="ti ti-confetti" style="color:var(--gold-d);" aria-hidden="true"></i> {{ finished.length }} book{{ finished.length === 1 ? '' : 's' }} on the shelf</div>
@@ -173,8 +198,31 @@ async function remove(b) {
       <i class="ti ti-book-2" style="font-size:30px;color:var(--ink2);display:block;margin-bottom:6px;" aria-hidden="true"></i>
       Your shelf is empty. Add the book you're reading now to get started.
     </div>
+    </template>
+
+    <!-- QUOTES COLLECTION -->
+    <template v-else>
+      <div v-if="!quotesLoaded" class="card sub">Loading your quotes…</div>
+      <template v-else>
+        <div v-if="!quotes.length" class="card sub" style="text-align:center;padding:24px 16px;">
+          <i class="ti ti-quote" style="font-size:30px;color:var(--ink2);display:block;margin-bottom:6px;" aria-hidden="true"></i>
+          No quotes yet. Save a line you love while reading, or when you log a session.
+        </div>
+        <div v-else class="stagger" style="display:flex;flex-direction:column;gap:9px;">
+          <div v-for="qq in quotes" :key="qq.id" class="card" style="display:flex;flex-direction:column;gap:9px;" :style="isPinned(qq) ? { background: 'var(--gold-bg)', borderColor: '#EBD49B' } : {}">
+            <p style="font-style:italic;font-family:'Quicksand';line-height:1.5;margin:0;">“{{ qq.quote }}”</p>
+            <div class="row" style="gap:8px;">
+              <span v-if="qq.title" class="sub" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">— {{ qq.title }}</span>
+              <span v-else style="flex:1;"></span>
+              <button class="chip" :class="{ on: isPinned(qq) }" @click="togglePin(qq)"><i class="ti ti-pin" aria-hidden="true"></i> {{ isPinned(qq) ? 'Pinned to profile' : 'Pin to profile' }}</button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </template>
   </div>
 </template>
+
 
 <style scoped>
 .bookcase {

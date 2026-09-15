@@ -40,7 +40,15 @@ const booksFinished = computed(() => data.value?.shelf?.finishedTotal ?? 0);
 // the automatic ladder is the fallback; a badge title can be equipped over it
 const autoTitle = computed(() => readerTitleFor(booksFinished.value, data.value?.totals?.minutes || 0));
 const displayTitle = computed(() => data.value?.member?.title || autoTitle.value);
-const unlockedTitles = computed(() => (data.value?.badges || []).filter((b) => b.earned).map((b) => b.title));
+const ach = computed(() => data.value?.achievements || { tracks: [], specials: [] });
+const rarityColor = (r) => (r === 'legendary' ? 'var(--r-legendary)' : r === 'rare' ? 'var(--r-rare)' : 'var(--r-common)');
+// titles you can equip: every tier you've reached, plus earned specials
+const unlockedTitles = computed(() => {
+  const out = [];
+  for (const t of ach.value.tracks) for (let i = 0; i <= t.tierIndex; i++) out.push(t.tiers[i].title);
+  for (const s of ach.value.specials) if (s.earned) out.push(s.title);
+  return out;
+});
 async function setTitle(t) {
   const updated = await api.setTitle(t);
   store.setMember(updated);
@@ -114,13 +122,33 @@ async function requestDelete(s) {
   await api.requestDeleteSession(s.id); await load();
 }
 async function cancelDelete(s) { await api.cancelDeleteSession(s.id); await load(); }
+
+// pin a favorite quote (from a logged session) to the public profile
+const pinnedQuote = computed(() => data.value?.member?.pinnedQuote || '');
+const pinnedQuoteBook = computed(() => data.value?.member?.pinnedQuoteBook || '');
+const isPinned = (s) => !!s.quote && s.quote === pinnedQuote.value;
+async function pinQuote(s) {
+  const updated = await api.setPinnedQuote({ quote: s.quote, book: s.title || '' });
+  store.setMember(updated);
+  await load();
+}
+async function unpinQuote() {
+  const updated = await api.setPinnedQuote({ quote: '' });
+  store.setMember(updated);
+  await load();
+}
 const logDate = (ts) => (ts ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '');
-const earnedCount = computed(() => (data.value?.badges || []).filter((b) => b.earned).length);
-const selectedBadge = ref(null);
-// collapsed shows just the first row, earned ones first so it's your wins on display
-const badgesOpen = ref(false);
-const sortedBadges = computed(() => [...(data.value?.badges || [])].sort((a, b) => (b.earned ? 1 : 0) - (a.earned ? 1 : 0)));
-const shownBadges = computed(() => (badgesOpen.value ? sortedBadges.value : sortedBadges.value.slice(0, 4)));
+// earned badges (top tier per track + earned specials), rarest first, for the profile teaser row
+const RARITY_RANK = { legendary: 3, rare: 2, common: 1 };
+const earnedBadges = computed(() => {
+  const out = [];
+  for (const t of ach.value.tracks) if (t.tierIndex >= 0) out.push({ id: t.id, name: t.current.title, icon: t.icon, rarity: t.current.rarity });
+  for (const s of ach.value.specials) if (s.earned) out.push({ id: s.id, name: s.title, icon: s.icon, rarity: s.rarity });
+  return out.sort((a, b) => (RARITY_RANK[b.rarity] || 0) - (RARITY_RANK[a.rarity] || 0));
+});
+const totalBadges = computed(() => ach.value.tracks.length + ach.value.specials.length);
+const earnedCount = computed(() => earnedBadges.value.length);
+const topBadges = computed(() => earnedBadges.value.slice(0, 4));
 
 async function saveGoal() {
   savingGoal.value = true;
@@ -157,6 +185,14 @@ async function logout() {
         <span v-if="rank" class="chip" style="background:var(--gold-bg);color:var(--gold-d);"><i :class="rank === 1 ? 'ti ti-crown' : 'ti ti-trophy'" aria-hidden="true"></i> {{ rank === 1 ? '1st this month' : ordinal(rank) + ' this month' }}</span>
         <span v-if="streak > 0" class="chip" style="background:#FBE0D2;color:var(--terra-d);"><i class="ti ti-flame flame" aria-hidden="true"></i> {{ streak }}-day streak</span>
       </div>
+    </div>
+
+    <!-- a favorite quote, pinned for everyone to see -->
+    <div v-if="pinnedQuote" class="card" style="background:var(--gold-bg);border-color:#EBD49B;position:relative;">
+      <i class="ti ti-quote" style="color:var(--gold-d);font-size:20px;" aria-hidden="true"></i>
+      <p style="font-style:italic;font-family:'Quicksand';line-height:1.5;margin:5px 0 0;">“{{ pinnedQuote }}”</p>
+      <div v-if="pinnedQuoteBook" class="sub" style="color:var(--gold-d);margin-top:6px;">— {{ pinnedQuoteBook }}</div>
+      <button v-if="isMe" class="chip" aria-label="Unpin quote" title="Unpin" style="position:absolute;top:10px;right:10px;background:var(--card);padding:4px 8px;" @click="unpinQuote"><i class="ti ti-x" aria-hidden="true"></i></button>
     </div>
 
     <!-- accomplishments at a glance -->
@@ -241,7 +277,7 @@ async function logout() {
             </div>
           </div>
           <div>
-            <div class="sub" style="margin-bottom:8px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Title<InfoBubble text="Badges you earn unlock titles you can wear. Automatic keeps pace with your books and hours." /></div>
+            <div class="sub" style="margin-bottom:8px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Title<InfoBubble text="Your reading rank climbs on its own. Equip any title you've unlocked from achievements, or keep the automatic rank." /></div>
             <div class="row" style="gap:7px;flex-wrap:wrap;">
               <button class="chip" :class="{ on: !data.member.title }" @click="setTitle('')">{{ autoTitle }} <span style="opacity:.7;">· auto</span></button>
               <button v-for="t in unlockedTitles" :key="t" class="chip" :class="{ on: data.member.title === t }" @click="setTitle(t)">{{ t }}</button>
@@ -282,26 +318,20 @@ async function logout() {
     <!-- badges as trophies -->
     <div class="card" style="display:flex;flex-direction:column;gap:14px;">
       <div class="row" style="justify-content:space-between;">
-        <span style="font-weight:600;font-size:14px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Badges<span class="sub" style="font-weight:400;"> · {{ earnedCount }} of {{ data.badges.length }} earned</span></span>
-        <button class="chip" style="padding:3px 10px;" @click="badgesOpen = !badgesOpen">
-          {{ badgesOpen ? 'Less' : `All ${data.badges.length}` }} <i :class="badgesOpen ? 'ti ti-chevron-up' : 'ti ti-chevron-down'" style="font-size:14px;" aria-hidden="true"></i>
-        </button>
+        <span style="font-weight:600;font-size:14px;"><i class="ti ti-award" style="color:var(--gold-d);" aria-hidden="true"></i> Badges<span class="sub" style="font-weight:400;"> · {{ earnedCount }} of {{ totalBadges }}</span></span>
+        <button class="chip" style="padding:3px 10px;" @click="router.push(isMe ? '/achievements' : '/achievements/' + id)">All <i class="ti ti-chevron-right" style="font-size:14px;" aria-hidden="true"></i></button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
-        <button v-for="b in shownBadges" :key="b.id" @click="selectedBadge = selectedBadge && selectedBadge.id === b.id ? null : b"
-          style="background:none;border:none;cursor:pointer;text-align:center;padding:0;font-family:inherit;" :style="{ opacity: b.earned ? 1 : .35 }">
-          <span class="av" style="width:46px;height:46px;margin:0 auto;transition:box-shadow .15s ease;"
-            :style="[b.earned ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#EDE5D6', color: '#A99A85' }, selectedBadge && selectedBadge.id === b.id ? { boxShadow: '0 0 0 3px var(--terra)' } : {}]">
+      <div v-if="earnedBadges.length" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+        <button v-for="b in topBadges" :key="b.id" @click="router.push(isMe ? '/achievements' : '/achievements/' + id)"
+          style="background:none;border:none;cursor:pointer;text-align:center;padding:0;font-family:inherit;">
+          <span class="av" style="width:46px;height:46px;margin:0 auto;border-radius:14px;"
+            :style="{ background: 'color-mix(in srgb, ' + rarityColor(b.rarity) + ' 16%, var(--card))', color: rarityColor(b.rarity) }">
             <i :class="['ti', b.icon]" style="font-size:22px;" aria-hidden="true"></i>
           </span>
           <div class="sub" style="margin-top:5px;font-size:11px;line-height:1.2;">{{ b.name }}</div>
         </button>
       </div>
-      <div v-if="selectedBadge" class="pop-in" style="background:var(--paper);border-radius:14px;padding:11px 13px;display:flex;gap:10px;align-items:center;">
-        <span class="av" style="width:34px;height:34px;flex-shrink:0;" :style="selectedBadge.earned ? { background: 'var(--gold-bg)', color: 'var(--gold-d)' } : { background: '#EDE5D6', color: '#A99A85' }"><i :class="['ti', selectedBadge.icon]" style="font-size:17px;" aria-hidden="true"></i></span>
-        <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:14px;">{{ selectedBadge.name }}</div><div class="sub">{{ selectedBadge.desc }}</div></div>
-        <span class="chip" :style="selectedBadge.earned ? { background: 'var(--sage-bg)', color: 'var(--sage-d)' } : {}">{{ selectedBadge.earned ? 'Earned' : 'Locked' }}</span>
-      </div>
+      <div v-else class="sub">No badges yet. Log some reading and they'll start filling in.</div>
     </div>
 
     <!-- time by format -->
@@ -339,11 +369,14 @@ async function logout() {
           <div v-if="s.summary" style="font-size:14px;line-height:1.5;">{{ s.summary }}</div>
           <div v-if="s.quote" class="sub" style="font-style:italic;">“{{ s.quote }}”</div>
           <div v-if="isMe" class="row" style="gap:8px;">
+            <button v-if="s.quote" class="chip" :class="{ on: isPinned(s) }" @click="isPinned(s) ? unpinQuote() : pinQuote(s)">
+              <i class="ti ti-pin" aria-hidden="true"></i> {{ isPinned(s) ? 'Pinned' : 'Pin quote' }}
+            </button>
             <template v-if="s.deleteRequested">
-              <span class="sub" style="flex:1;"><i class="ti ti-clock" aria-hidden="true"></i> Removal requested, waiting for an admin</span>
-              <button class="chip" @click="cancelDelete(s)">Cancel request</button>
+              <span class="sub" style="margin-left:auto;"><i class="ti ti-clock" aria-hidden="true"></i> Waiting for an admin</span>
+              <button class="chip" @click="cancelDelete(s)">Cancel</button>
             </template>
-            <button v-else class="chip" style="color:var(--terra-d);" @click="requestDelete(s)"><i class="ti ti-trash" aria-hidden="true"></i> Request removal</button>
+            <button v-else class="chip" style="color:var(--terra-d);margin-left:auto;" @click="requestDelete(s)"><i class="ti ti-trash" aria-hidden="true"></i> Request removal</button>
           </div>
         </div>
       </div>

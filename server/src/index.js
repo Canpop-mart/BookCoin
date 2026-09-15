@@ -32,6 +32,7 @@ const publicMember = (m) => ({
   theme: m.theme || 'classic', emblem: m.emblem || '', mascot: m.mascot || 'wizard',
   avatar: m.avatar || '', householdId: m.household_id ?? null, onboarded: !!m.onboarded,
   title: m.title || '', // '' = fall back to the automatic reader-title ladder
+  pinnedQuote: m.pinned_quote || '', pinnedQuoteBook: m.pinned_quote_book || '',
 });
 
 const validHouseholdId = (v) => {
@@ -303,49 +304,102 @@ function longestStreak(daysAsc) {
   return best;
 }
 
-function computeBadges(memberId, totals) {
+// Achievements are tiered tracks (level them up) plus a few one-off specials.
+// Every reached tier / earned special unlocks a wearable title (see POST /me/title).
+// NOTE: badge NAMES and TITLES are user-facing copy the owner may rename freely.
+function computeAchievements(memberId, totals) {
   const genreRows = db.prepare('SELECT genres FROM sessions WHERE member_id = ?').all(memberId);
   const genres = new Set();
   for (const r of genreRows) for (const g of safeParse(r.genres)) genres.add(g);
-  const mediums = db.prepare('SELECT COUNT(DISTINCT medium) AS n FROM sessions WHERE member_id = ?').get(memberId).n;
+  const formats = db.prepare('SELECT COUNT(DISTINCT medium) AS n FROM sessions WHERE member_id = ?').get(memberId).n;
   const days = db.prepare('SELECT DISTINCT substr(created_at,1,10) AS d FROM sessions WHERE member_id = ? ORDER BY d').all(memberId).map((r) => r.d);
   const streak = longestStreak(days);
-  const questsDone = db.prepare("SELECT COUNT(*) AS n FROM quest_claims WHERE member_id = ? AND status IN ('claimed','approved')").get(memberId).n;
-  const redeemed = db.prepare("SELECT COUNT(*) AS n FROM redemptions WHERE member_id = ? AND status != 'cancelled'").get(memberId).n;
-  const earned = db.prepare('SELECT COALESCE(SUM(amount),0) AS n FROM coin_txns WHERE member_id = ? AND amount > 0').get(memberId).n;
   const finished = db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'finished'").get(memberId).n;
   const longestSession = db.prepare('SELECT COALESCE(MAX(minutes),0) AS n FROM sessions WHERE member_id = ?').get(memberId).n;
   const reviews = db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND review IS NOT NULL AND review != ''").get(memberId).n;
   const busiestDay = db.prepare('SELECT COALESCE(MAX(c),0) AS n FROM (SELECT COUNT(*) AS c FROM sessions WHERE member_id = ? GROUP BY substr(created_at,1,10))').get(memberId).n;
-  // every badge also unlocks a wearable title (see POST /me/title)
-  return [
-    { id: 'first', name: 'First steps', title: 'The Beginning', icon: 'ti-seedling', desc: 'Log your first reading', earned: totals.sessions >= 1 },
-    { id: 'bookworm', name: 'Bookworm', title: 'Bookworm', icon: 'ti-book', desc: 'Log 10 sessions', earned: totals.sessions >= 10 },
-    { id: 'finisher', name: 'The end', title: 'Finisher', icon: 'ti-flag-check', desc: 'Finish your first book', earned: finished >= 1 },
-    { id: 'shelf10', name: 'Shelf builder', title: 'Shelf Builder', icon: 'ti-books', desc: 'Finish 10 books', earned: finished >= 10 },
-    { id: 'collector', name: 'Collector', title: 'The Collector', icon: 'ti-library', desc: 'Finish 25 books', earned: finished >= 25 },
-    { id: 'marathon', name: 'Marathoner', title: 'Marathoner', icon: 'ti-run', desc: 'Read 10 hours total', earned: totals.minutes >= 600 },
-    { id: 'devoted', name: 'Devoted', title: 'The Devoted', icon: 'ti-clock-hour-4', desc: 'Read 50 hours total', earned: totals.minutes >= 3000 },
-    { id: 'centuryhours', name: 'A hundred hours', title: 'Centurion', icon: 'ti-hourglass-high', desc: 'Read 100 hours total', earned: totals.minutes >= 6000 },
-    { id: 'deepdive', name: 'Deep dive', title: 'Deep Diver', icon: 'ti-anchor', desc: 'One session of 2 hours', earned: longestSession >= 120 },
-    { id: 'binge', name: 'Binge day', title: 'Binge Reader', icon: 'ti-bolt', desc: '5 sessions in one day', earned: busiestDay >= 5 },
-    { id: 'century', name: 'Century', title: 'Century Reader', icon: 'ti-stack', desc: 'Read 100 pages', earned: totals.pages >= 100 },
-    { id: 'explorer', name: 'Explorer', title: 'Explorer', icon: 'ti-compass', desc: 'Read 5 genres', earned: genres.size >= 5 },
-    { id: 'genremaster', name: 'Genre master', title: 'Genre Master', icon: 'ti-map-2', desc: 'Read 15 genres', earned: genres.size >= 15 },
-    { id: 'omnivore', name: 'Omnivore', title: 'Omnivore', icon: 'ti-books', desc: 'Read 4 formats', earned: mediums >= 4 },
-    { id: 'streak', name: 'On fire', title: 'On Fire', icon: 'ti-flame', desc: 'A 7-day streak', earned: streak >= 7 },
-    { id: 'streak30', name: 'Unbroken', title: 'Unbroken', icon: 'ti-calendar-check', desc: 'A 30-day streak', earned: streak >= 30 },
-    { id: 'critic', name: 'Critic', title: 'The Critic', icon: 'ti-quote', desc: 'Write 5 reviews', earned: reviews >= 5 },
-    { id: 'quests', name: 'Quest hunter', title: 'Quest Hunter', icon: 'ti-wand', desc: 'Finish 5 quests', earned: questsDone >= 5 },
-    { id: 'spender', name: 'Treat yourself', title: 'Big Spender', icon: 'ti-gift', desc: 'Redeem a reward', earned: redeemed >= 1 },
-    { id: 'rich', name: 'Coin hoard', title: 'Coin Hoarder', icon: 'ti-coins', desc: 'Earn 1,000 coins', earned: earned >= 1000 },
+  const quotes = db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE member_id = ? AND trim(quote) != ''").get(memberId).n;
+  const hours = Math.floor((totals.minutes || 0) / 60);
+
+  // returned after a two-week+ break between reading days
+  let comeback = false;
+  for (let i = 1; i < days.length; i++) {
+    if ((Date.parse(days[i] + 'T00:00:00Z') - Date.parse(days[i - 1] + 'T00:00:00Z')) / 86400000 >= 14) { comeback = true; break; }
+  }
+  // ever finished 1st in a wrapped-up month
+  let champion = false;
+  for (const row of db.prepare('SELECT data FROM month_summaries').all()) {
+    const st = safeParse(row.data)?.standings;
+    if (Array.isArray(st) && st[0] && st[0].id === memberId) { champion = true; break; }
+  }
+
+  const track = (id, name, category, icon, unit, value, tiers) => {
+    let tierIndex = -1;
+    for (let i = 0; i < tiers.length; i++) if (value >= tiers[i].at) tierIndex = i;
+    const next = tierIndex + 1 < tiers.length
+      ? { ...tiers[tierIndex + 1], remaining: Math.max(0, tiers[tierIndex + 1].at - value) } : null;
+    return { id, name, category, icon, unit, value, tiers, tierIndex, current: tierIndex >= 0 ? tiers[tierIndex] : null, next, earned: tierIndex >= 0 };
+  };
+  const tracks = [
+    track('time', 'Time read', 'Reading', 'ti-clock-hour-4', 'h', hours, [
+      { at: 10, title: 'Marathoner', rarity: 'common' },
+      { at: 50, title: 'The Devoted', rarity: 'rare' },
+      { at: 100, title: 'Centurion', rarity: 'rare' },
+      { at: 300, title: 'The Eternal', rarity: 'legendary' },
+    ]),
+    track('books', 'Books finished', 'Reading', 'ti-books', '', finished, [
+      { at: 1, title: 'Finisher', rarity: 'common' },
+      { at: 10, title: 'Shelf Builder', rarity: 'common' },
+      { at: 25, title: 'The Collector', rarity: 'rare' },
+      { at: 50, title: 'The Archivist', rarity: 'legendary' },
+    ]),
+    track('sessions', 'Sessions logged', 'Habit', 'ti-book', '', totals.sessions, [
+      { at: 1, title: 'First Steps', rarity: 'common' },
+      { at: 25, title: 'Regular', rarity: 'common' },
+      { at: 100, title: 'Faithful', rarity: 'rare' },
+    ]),
+    track('streak', 'Day streak', 'Habit', 'ti-flame', 'd', streak, [
+      { at: 7, title: 'On Fire', rarity: 'common' },
+      { at: 30, title: 'Unbroken', rarity: 'rare' },
+      { at: 100, title: 'Unstoppable', rarity: 'legendary' },
+    ]),
+    track('genres', 'Genres explored', 'Explorer', 'ti-compass', '', genres.size, [
+      { at: 5, title: 'Explorer', rarity: 'common' },
+      { at: 15, title: 'Genre Master', rarity: 'rare' },
+    ]),
+    track('formats', 'Formats read', 'Explorer', 'ti-versions', '', formats, [
+      { at: 3, title: 'Dabbler', rarity: 'common' },
+      { at: 5, title: 'Omnivore', rarity: 'rare' },
+    ]),
+    track('quotes', 'Quotes saved', 'Collector', 'ti-quote', '', quotes, [
+      { at: 5, title: 'Quote Keeper', rarity: 'common' },
+      { at: 25, title: 'Keeper of Quotes', rarity: 'rare' },
+    ]),
+    track('reviews', 'Reviews written', 'Collector', 'ti-pencil', '', reviews, [
+      { at: 5, title: 'The Critic', rarity: 'common' },
+      { at: 20, title: 'Reviewer at Large', rarity: 'rare' },
+    ]),
   ];
+
+  const special = (id, name, icon, desc, title, rarity, earned) => ({ id, name, category: 'Special', icon, desc, title, rarity, earned });
+  const specials = [
+    special('deepdive', 'Deep dive', 'ti-anchor', 'One sitting of 2 hours', 'Deep Diver', 'rare', longestSession >= 120),
+    special('binge', 'Binge day', 'ti-bolt', 'Five sessions in one day', 'Binge Reader', 'rare', busiestDay >= 5),
+    special('champion', 'Champion', 'ti-crown', 'Finish 1st in a month', 'Champion', 'legendary', champion),
+    special('comeback', 'Comeback', 'ti-arrow-back-up', 'Return after a long break', 'Back at It', 'common', comeback),
+  ];
+
+  return { tracks, specials };
 }
 
 // badges a member has actually earned, as equippable titles
 function earnedTitles(memberId) {
   const totals = db.prepare('SELECT COALESCE(SUM(minutes),0) AS minutes, COUNT(*) AS sessions, COALESCE(SUM(pages),0) AS pages FROM sessions WHERE member_id = ?').get(memberId);
-  return computeBadges(memberId, totals).filter((b) => b.earned).map((b) => b.title);
+  const a = computeAchievements(memberId, totals);
+  const titles = [];
+  for (const t of a.tracks) for (let i = 0; i <= t.tierIndex; i++) titles.push(t.tiers[i].title);
+  for (const s of a.specials) if (s.earned) titles.push(s.title);
+  return titles;
 }
 
 // ===================== api =====================
@@ -449,6 +503,14 @@ api.post('/sessions', async (c) => {
 api.get('/me/sessions', (c) => {
   const m = c.get('member');
   return c.json(db.prepare('SELECT * FROM sessions WHERE member_id = ? ORDER BY id DESC').all(m.id).map(rowToSession));
+});
+
+// every line you've saved, for the Quotes collection on your shelf
+api.get('/me/quotes', (c) => {
+  const m = c.get('member');
+  return c.json(db.prepare(
+    "SELECT id, title, quote, created_at AS createdAt FROM sessions WHERE member_id = ? AND trim(quote) != '' ORDER BY id DESC"
+  ).all(m.id));
 });
 
 // retroactively link a past session to a shelf book (matched by title, like the rest of the app)
@@ -606,7 +668,7 @@ api.get('/profile/:id', (c) => {
     finishedThisYear: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'finished' AND strftime('%Y', COALESCE(finished_at, created_at)) = strftime('%Y','now')").get(id).n,
     wantTotal: db.prepare("SELECT COUNT(*) AS n FROM member_books WHERE member_id = ? AND status = 'want'").get(id).n,
   };
-  return c.json({ member: publicMember(m), balance: balance(id), lifetimeEarned: lifetimeEarned(id), totals, byMedium, monthMinutes, recent, shelf, badges: computeBadges(id, totals) });
+  return c.json({ member: publicMember(m), balance: balance(id), lifetimeEarned: lifetimeEarned(id), totals, byMedium, monthMinutes, recent, shelf, achievements: computeAchievements(id, totals) });
 });
 
 api.post('/me/goal', async (c) => {
@@ -635,6 +697,16 @@ api.post('/me/title', async (c) => {
   const want = String(b.title || '').trim();
   if (want && !earnedTitles(m.id).includes(want)) return c.json({ error: "You haven't earned that title yet" }, 400);
   db.prepare('UPDATE members SET title = ? WHERE id = ?').run(want, m.id);
+  return c.json(publicMember(db.prepare('SELECT * FROM members WHERE id = ?').get(m.id)));
+});
+
+// pin a favorite quote to your public profile (empty quote clears it)
+api.post('/me/pinned-quote', async (c) => {
+  const m = c.get('member');
+  const b = await c.req.json().catch(() => ({}));
+  const quote = String(b.quote || '').trim().slice(0, 400);
+  const book = String(b.book || '').trim().slice(0, 200);
+  db.prepare('UPDATE members SET pinned_quote = ?, pinned_quote_book = ? WHERE id = ?').run(quote, quote ? book : '', m.id);
   return c.json(publicMember(db.prepare('SELECT * FROM members WHERE id = ?').get(m.id)));
 });
 

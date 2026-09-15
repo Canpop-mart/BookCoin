@@ -33,7 +33,8 @@ export const store = reactive({
     this.timer = {
       startedAt: Date.now() - Math.max(0, (last.seconds || 0)) * 1000,
       running: true, pausedAccumMs: 0, pausedAt: null,
-      title: last.title || '', segments: segs,
+      title: last.title || '', segments: segs, quote: last.quote || '',
+      cover: d.cover || '', bookId: d.bookId || null,
     };
     this.draft = null;
     this.save();
@@ -52,7 +53,7 @@ export const store = reactive({
   startTimer(title = '', meta = {}) {
     this.timer = {
       startedAt: Date.now(), running: true, pausedAccumMs: 0, pausedAt: null,
-      title, segments: [], cover: meta.cover || '', bookId: meta.bookId || null,
+      title, segments: [], cover: meta.cover || '', bookId: meta.bookId || null, quote: '',
     };
     this.save();
   },
@@ -60,7 +61,8 @@ export const store = reactive({
   splitTimer() {
     if (!this.timer) return;
     const seconds = Math.max(1, Math.round(this.elapsedMs() / 1000));
-    this.timer.segments = [...(this.timer.segments || []), { seconds, title: this.timer.title || '' }];
+    // bank the lap with its quote so switching books never loses what you jotted
+    this.timer.segments = [...(this.timer.segments || []), { seconds, title: this.timer.title || '', quote: this.timer.quote || '' }];
     this.timer.startedAt = Date.now();
     this.timer.pausedAccumMs = 0;
     this.timer.pausedAt = this.timer.running ? null : Date.now();
@@ -68,6 +70,18 @@ export const store = reactive({
     this.timer.title = '';
     this.timer.cover = '';
     this.timer.bookId = null;
+    this.timer.quote = '';
+    this.save();
+  },
+  // jot / edit a quote for the lap on the clock, mid-session
+  setTimerQuote(q) { if (this.timer) { this.timer.quote = q; this.save(); } },
+  // drop a banked lap (e.g. an accidental split) without leaving the timer, and
+  // give its time back to the running clock so the sitting's total is unchanged
+  removeSegment(i) {
+    if (!this.timer || !Array.isArray(this.timer.segments)) return;
+    const [removed] = this.timer.segments.splice(i, 1);
+    const secs = Math.max(0, Math.round(removed?.seconds || 0));
+    this.timer.startedAt -= secs * 1000; // moving the start back lengthens elapsed by that much
     this.save();
   },
   pauseTimer() {

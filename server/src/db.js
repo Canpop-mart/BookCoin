@@ -179,6 +179,9 @@ if (!memberCols.includes('onboarded')) db.exec('ALTER TABLE members ADD COLUMN o
 if (!memberCols.includes('avatar')) db.exec("ALTER TABLE members ADD COLUMN avatar TEXT NOT NULL DEFAULT ''");
 // equipped title, earned by unlocking the matching badge ('' = the automatic volume ladder)
 if (!memberCols.includes('title')) db.exec("ALTER TABLE members ADD COLUMN title TEXT NOT NULL DEFAULT ''");
+// a favorite quote pinned to the public profile (with the book it's from)
+if (!memberCols.includes('pinned_quote')) db.exec("ALTER TABLE members ADD COLUMN pinned_quote TEXT NOT NULL DEFAULT ''");
+if (!memberCols.includes('pinned_quote_book')) db.exec("ALTER TABLE members ADD COLUMN pinned_quote_book TEXT NOT NULL DEFAULT ''");
 
 // --- migration: multi-household support (household is a soft grouping, not a wall) ---
 if (!memberCols.includes('household_id')) db.exec('ALTER TABLE members ADD COLUMN household_id INTEGER REFERENCES households(id)');
